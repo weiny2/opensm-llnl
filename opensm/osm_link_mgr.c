@@ -101,6 +101,7 @@ static int link_mgr_set_physp_pi(osm_sm_t * sm, IN osm_physp_t * p_physp,
 	boolean_t esp0 = FALSE, send_set = FALSE;
 	osm_physp_t *p_remote_physp;
 	int ret = 0;
+	uint8_t force_link_speed;
 
 	OSM_LOG_ENTER(sm->p_log);
 
@@ -323,12 +324,22 @@ static int link_mgr_set_physp_pi(osm_sm_t * sm, IN osm_physp_t * p_physp,
 			   sizeof(p_pi->link_width_enabled)))
 			send_set = TRUE;
 
-		if (sm->p_subn->opt.force_link_speed &&
-		    (sm->p_subn->opt.force_link_speed != 15 ||
+		/* use the force link speed set in the config */
+		force_link_speed = sm->p_subn->opt.force_link_speed;
+		/* unless this node guid is in our "except"ion file */
+		if (cl_map_get(&sm->force_link_speed_except_guids,
+			       cl_ntoh64(p_physp->port_guid))
+			       == (void *)1) {
+			OSM_LOG(sm->p_log, OSM_LOG_DEBUG,
+				"Skipping force_link_speed on port GUID 0x%016" PRIx64 "\n",
+			       cl_ntoh64(p_physp->port_guid));
+			force_link_speed = 15;
+		}
+
+		if (force_link_speed && (force_link_speed != 15 ||
 		     ib_port_info_get_link_speed_enabled(p_pi) !=
 		     ib_port_info_get_link_speed_sup(p_pi))) {
 			ib_port_info_set_link_speed_enabled(p_pi,
-							    sm->p_subn->opt.
 							    force_link_speed);
 			if (memcmp(&p_pi->link_speed, &p_old_pi->link_speed,
 				   sizeof(p_pi->link_speed)))

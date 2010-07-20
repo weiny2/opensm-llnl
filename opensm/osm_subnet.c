@@ -47,6 +47,7 @@
 #  include <config.h>
 #endif				/* HAVE_CONFIG_H */
 
+#include <sys/stat.h>
 #include <string.h>
 #include <stdio.h>
 #include <stdarg.h>
@@ -309,6 +310,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "lmc_esp0", OPT_OFFSET(lmc_esp0), opts_parse_boolean, NULL, 1 },
 	{ "max_op_vls", OPT_OFFSET(max_op_vls), opts_parse_uint8, NULL, 1 },
 	{ "force_link_speed", OPT_OFFSET(force_link_speed), opts_parse_uint8, NULL, 1 },
+	{ "force_link_speed_file", OPT_OFFSET(force_link_speed_file), opts_parse_charp, NULL, 1 },
 	{ "reassign_lids", OPT_OFFSET(reassign_lids), opts_parse_boolean, NULL, 1 },
 	{ "ignore_other_sm", OPT_OFFSET(ignore_other_sm), opts_parse_boolean, NULL, 1 },
 	{ "single_thread", OPT_OFFSET(single_thread), opts_parse_boolean, NULL, 0 },
@@ -679,6 +681,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->lmc_esp0 = FALSE;
 	p_opt->max_op_vls = OSM_DEFAULT_MAX_OP_VLS;
 	p_opt->force_link_speed = 15;
+	p_opt->force_link_speed_file = NULL;
 	p_opt->reassign_lids = FALSE;
 	p_opt->ignore_other_sm = FALSE;
 	p_opt->single_thread = FALSE;
@@ -1076,6 +1079,15 @@ int osm_subn_verify_config(IN osm_subn_opt_t * p_opts)
 		p_opts->max_wire_smps2 = p_opts->max_wire_smps;
 	}
 
+	if (p_opts->force_link_speed_file) {
+		struct stat statbuf;
+		if (stat(p_opts->force_link_speed_file, &statbuf))
+			log_report(" Invalid Cached Option "
+				   "Value:force_link_speed_file = %s"
+				   "; file not found\n",
+				   p_opts->force_link_speed_file);
+	}
+
 	if (strcmp(p_opts->console, OSM_DISABLE_CONSOLE)
 	    && strcmp(p_opts->console, OSM_LOCAL_CONSOLE)
 #ifdef ENABLE_OSM_CONSOLE_SOCKET
@@ -1297,6 +1309,10 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"#    2,4,6,8-14 Reserved\n"
 		"#    Default 15: set to PortInfo:LinkSpeedSupported\n"
 		"force_link_speed %u\n\n"
+		"# file listing GUIDs which should be ignored\n"
+		"# when forcing the link speed\n"
+		"# Only read at startup\n"
+		"force_link_speed_file %s\n\n"
 		"# The subnet_timeout code that will be set for all the ports\n"
 		"# The actual timeout is 4.096usec * 2^<subnet_timeout>\n"
 		"subnet_timeout %u\n\n"
@@ -1320,6 +1336,7 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		p_opts->leaf_head_of_queue_lifetime,
 		p_opts->max_op_vls,
 		p_opts->force_link_speed,
+		p_opts->force_link_speed_file,
 		p_opts->subnet_timeout,
 		p_opts->local_phy_errors_threshold,
 		p_opts->overrun_errors_threshold);

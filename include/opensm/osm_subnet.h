@@ -158,6 +158,7 @@ typedef struct osm_subn_opt {
 	boolean_t lmc_esp0;
 	uint8_t max_op_vls;
 	uint8_t force_link_speed;
+	char *force_link_speed_file;
 	boolean_t reassign_lids;
 	boolean_t ignore_other_sm;
 	boolean_t single_thread;
