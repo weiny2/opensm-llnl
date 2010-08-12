@@ -249,6 +249,7 @@ static void *umad_receiver(void *p_ptr)
 	ib_mad_t *mad;
 	void *umad = 0;
 	int mad_agent, length;
+	int status;
 
 	OSM_LOG_ENTER(p_ur->p_log);
 
@@ -325,14 +326,15 @@ static void *umad_receiver(void *p_ptr)
 		umad = swap_mad_bufs(p_madw, umad);
 
 		/* if status != 0 then we are handling recv timeout on send */
-		if (umad_status(p_madw->vend_wrap.umad)) {
+		if ((status = umad_status(p_madw->vend_wrap.umad))) {
 
 			if (mad->mgmt_class != IB_MCLASS_SUBN_DIR) {
 				/* LID routed */
 				OSM_LOG(p_vend->p_log, OSM_LOG_ERROR, "ERR 5410: "
-					"Send completed with error -- dropping\n"
+					"Send completed with error (%d) -- dropping\n"
 					"\t\t\tClass 0x%x, Method 0x%X, Attr 0x%X, "
 					"TID 0x%" PRIx64 ", LID %u\n",
+					status,
 					mad->mgmt_class, mad->method,
 					cl_ntoh16(mad->attr_id),
 					cl_ntoh64(mad->trans_id),
@@ -343,9 +345,10 @@ static void *umad_receiver(void *p_ptr)
 				/* Direct routed SMP */
 				smp = (ib_smp_t *) mad;
 				OSM_LOG(p_vend->p_log, OSM_LOG_ERROR, "ERR 5411: "
-					"DR SMP Send completed with error -- dropping\n"
+					"DR SMP Send completed with error (%d) -- dropping\n"
 					"\t\t\tMethod 0x%X, Attr 0x%X, TID 0x%" PRIx64
 					", Hop Ptr: 0x%X\n",
+					status,
 					mad->method, cl_ntoh16(mad->attr_id),
 					cl_ntoh64(mad->trans_id), smp->hop_ptr);
 				osm_dump_smp_dr_path(p_vend->p_log, smp,
