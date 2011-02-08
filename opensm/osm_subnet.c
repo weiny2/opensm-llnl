@@ -350,6 +350,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "cn_guid_file", OPT_OFFSET(cn_guid_file), opts_parse_charp, NULL, 0 },
 	{ "io_guid_file", OPT_OFFSET(io_guid_file), opts_parse_charp, NULL, 0 },
 	{ "port_shifting", OPT_OFFSET(port_shifting), opts_parse_boolean, NULL, 1 },
+	{ "remote_guid_sorting", OPT_OFFSET(remote_guid_sorting), opts_parse_boolean, NULL, 1 },
 	{ "max_reverse_hops", OPT_OFFSET(max_reverse_hops), opts_parse_uint16, NULL, 0 },
 	{ "ids_guid_file", OPT_OFFSET(ids_guid_file), opts_parse_charp, NULL, 0 },
 	{ "guid_routing_order_file", OPT_OFFSET(guid_routing_order_file), opts_parse_charp, NULL, 0 },
@@ -747,6 +748,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->cn_guid_file = NULL;
 	p_opt->io_guid_file = NULL;
 	p_opt->port_shifting = FALSE;
+	p_opt->remote_guid_sorting = FALSE;
 	p_opt->max_reverse_hops = 0;
 	p_opt->ids_guid_file = NULL;
 	p_opt->guid_routing_order_file = NULL;
@@ -1464,6 +1466,11 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# Port Shifting (use FALSE if unsure)\n"
 		"port_shifting %s\n\n",
 		p_opts->port_shifting ? "TRUE" : "FALSE");
+
+	fprintf(out,
+		"# Remote Guid Sorting (use FALSE if unsure)\n"
+		"remote_guid_sorting %s\n\n",
+		p_opts->remote_guid_sorting ? "TRUE" : "FALSE");
 
 	fprintf(out,
 		"# SA database file name\nsa_db_file %s\n\n",

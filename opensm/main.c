@@ -226,6 +226,9 @@ static void show_usage(void)
 	printf("--port-shifting\n"
 	       "          Attempt to shift port routes around to remove alignment problems\n"
 	       "          in routing tables\n\n");
+	printf("--remote-guid-sorting\n"
+	       "          Sort ports by remote port guid before routing to alleviate\n"
+	       "          problems with inconsistent cabling across a fabric\n\n");
 	printf("--max_reverse_hops, -H <hop_count>\n"
 	       "          Set the max number of hops the wrong way around\n"
 	       "          an I/O node is allowed to do (connectivity for I/O nodes on top swithces)\n\n");
@@ -605,6 +608,7 @@ int main(int argc, char *argv[])
 		{"cn_guid_file", 1, NULL, 'u'},
 		{"io_guid_file", 1, NULL, 'G'},
 		{"port-shifting", 0, NULL, 11},
+		{"remote-guid-sorting", 0, NULL, 13},
 		{"max_reverse_hops", 1, NULL, 'H'},
 		{"ids_guid_file", 1, NULL, 'm'},
 		{"guid_routing_order_file", 1, NULL, 'X'},
@@ -944,6 +948,10 @@ int main(int argc, char *argv[])
 		case 11:
 			opt.port_shifting = TRUE;
 			printf(" Port Shifting is on\n");
+			break;
+		case 13:
+			opt.remote_guid_sorting = TRUE;
+			printf(" Remote Guid Sorting is on\n");
 			break;
 		case 'H':
 			opt.max_reverse_hops = atoi(optarg);

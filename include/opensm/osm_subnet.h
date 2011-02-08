@@ -201,6 +201,7 @@ typedef struct osm_subn_opt {
 	char *cn_guid_file;
 	char *io_guid_file;
 	boolean_t port_shifting;
+	boolean_t remote_guid_sorting;
 	uint16_t max_reverse_hops;
 	char *ids_guid_file;
 	char *guid_routing_order_file;
@@ -423,6 +424,9 @@ typedef struct osm_subn_opt {
 *
 *	port_shifting
 *		This option will turn on port_shifting in routing.
+*
+*	remote_guid_sorting
+*		This option will turn on remote_guid_sorting in routing.
 *
 *	ids_guid_file
 *		Name of the file that contains list of ids which should be
