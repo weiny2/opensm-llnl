@@ -1,25 +1,29 @@
 %define RELEASE @RELEASE@
 %define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
-%if %{?_with_console_socket:1}%{!?_with_console_socket:0}
+# For CHAOS we always want this option.
+#%if %{?_with_console_socket:1}%{!?_with_console_socket:0}
 %define _enable_console_socket --enable-console-socket
-%endif
-%if %{?_without_console_socket:1}%{!?_without_console_socket:0}
-%define _disable_console_socket --disable-console-socket
-%endif
+%define _extra_build_requires tcp_wrappers
+#%endif
+#%if %{?_without_console_socket:1}%{!?_without_console_socket:0}
+#%define _disable_console_socket --disable-console-socket
+#%endif
 
-%if %{?_with_perf_mgr:1}%{!?_with_perf_mgr:0}
+# For CHAOS we always want this option.
+#%if %{?_with_perf_mgr:1}%{!?_with_perf_mgr:0}
 %define _enable_perf_mgr --enable-perf-mgr
-%endif
-%if %{?_without_perf_mgr:1}%{!?_without_perf_mgr:0}
-%define _disable_perf_mgr --disable-perf-mgr
-%endif
+#%endif
+#%if %{?_without_perf_mgr:1}%{!?_without_perf_mgr:0}
+#%define _disable_perf_mgr --disable-perf-mgr
+#%endif
 
-%if %{?_with_event_plugin:1}%{!?_with_event_plugin:0}
+# For CHAOS we always want this option.
+#%if %{?_with_event_plugin:1}%{!?_with_event_plugin:0}
 %define _enable_event_plugin --enable-default-event-plugin
-%endif
-%if %{?_without_event_plugin:1}%{!?_without_event_plugin:0}
-%define _disable_event_plugin --disable-default-event-plugin
-%endif
+#%endif
+#%if %{?_without_event_plugin:1}%{!?_without_event_plugin:0}
+#%define _disable_event_plugin --disable-default-event-plugin
+#%endif
 
 %if %{?_with_node_name_map:1}%{!?_with_node_name_map:0}
 %define _enable_node_name_map --with-node-name-map%{?_with_node_name_map}
@@ -34,7 +38,7 @@ Group: System Environment/Daemons
 URL: http://openfabrics.org/
 Source: http://www.openfabrics.org/downloads/management/@TARBALL@
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: libibumad-devel, libtool
+BuildRequires: tcp_wrappers-devel, bison, flex, libibumad-devel, libtool %{_extra_build_requires}
 Requires: %{name}-libs = %{version}-%{release}, logrotate
 Requires(post): /sbin/service, /sbin/chkconfig
 Requires(preun): /sbin/chkconfig, /sbin/service
@@ -80,11 +84,8 @@ Static version of the opensm libraries
 %build
 %configure \
         %{?_enable_console_socket} \
-        %{?_disable_console_socket} \
         %{?_enable_perf_mgr} \
-        %{?_disable_perf_mgr} \
         %{?_enable_event_plugin} \
-        %{?_disable_event_plugin} \
         %{?_enable_node_name_map}
 make %{?_smp_mflags}
 
