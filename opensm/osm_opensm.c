@@ -289,7 +289,8 @@ void osm_opensm_destroy(IN osm_opensm_t * p_osm)
 	cl_disp_shutdown(&p_osm->disp);
 
 	/* dump SA DB */
-	osm_sa_db_file_dump(p_osm);
+	if (p_osm->subn.opt.sa_db_dump)
+		osm_sa_db_file_dump(p_osm);
 
 	/* do the destruction in reverse order as init */
 	destroy_plugins(p_osm);
@@ -324,7 +325,7 @@ static void load_plugins(osm_opensm_t *osm, const char *plugin_names)
 	char *p_names, *name, *p;
 
 	p_names = strdup(plugin_names);
-	name = strtok_r(p_names, " \t\n", &p);
+	name = strtok_r(p_names, ", \t\n", &p);
 	while (name && *name) {
 		epi = osm_epi_construct(osm, name);
 		if (!epi)
@@ -464,14 +465,12 @@ ib_api_status_t osm_opensm_init(IN osm_opensm_t * p_osm,
 			     p_osm->p_vendor, &p_osm->mad_pool, &p_osm->vl15,
 			     &p_osm->log, &p_osm->stats, &p_osm->disp,
 			     &p_osm->lock);
-
 	if (status != IB_SUCCESS)
 		goto Exit;
 
 	status = osm_sa_init(&p_osm->sm, &p_osm->sa, &p_osm->subn,
 			     p_osm->p_vendor, &p_osm->mad_pool, &p_osm->log,
 			     &p_osm->stats, &p_osm->disp, &p_osm->lock);
-
 	if (status != IB_SUCCESS)
 		goto Exit;
 

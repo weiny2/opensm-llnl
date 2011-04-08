@@ -137,7 +137,7 @@ ib_api_status_t osm_pkey_tbl_set(IN osm_pkey_tbl_t * p_pkey_tbl,
 	   tables there is no other way but to refresh the entire keys map.
 
 	   Moreover, if the same key exists but with full membership it should
-	   have precedence on the key with limited membership !
+	   have precedence over the key with limited membership !
 	 */
 	cl_map_remove_all(&p_pkey_tbl->keys);
 
@@ -380,7 +380,6 @@ Exit:
 boolean_t osm_physp_has_pkey(IN osm_log_t * p_log, IN ib_net16_t pkey,
 			     IN const osm_physp_t * p_physp)
 {
-
 	ib_net16_t *p_pkey, pkey_base;
 	const osm_pkey_tbl_t *pkey_tbl;
 	boolean_t res = FALSE;

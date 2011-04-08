@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
- * Copyright (c) 2002-2009 Mellanox Technologies LTD. All rights reserved.
+ * Copyright (c) 2002-2010 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
  * Copyright (c) 2009 HNR Consulting. All rights reserved.
  * Copyright (c) 2009 Sun Microsystems, Inc. All rights reserved.
@@ -892,9 +892,13 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			"\t\t\t\tp_key_violations........0x%X\n"
 			"\t\t\t\tq_key_violations........0x%X\n"
 			"\t\t\t\tguid_cap................0x%X\n"
+			"\t\t\t\tclient_reregister.......0x%X\n"
+			"\t\t\t\tmcast_pkey_trap_suppr...0x%X\n"
 			"\t\t\t\tsubnet_timeout..........0x%X\n"
 			"\t\t\t\tresp_time_value.........0x%X\n"
-			"\t\t\t\terror_threshold.........0x%X\n",
+			"\t\t\t\terror_threshold.........0x%X\n"
+			"\t\t\t\tmax_credit_hint.........0x%X\n"
+			"\t\t\t\tlink_round_trip_latency.0x%X\n",
 			cl_ntoh16(p_pir->lid), p_pir->port_num, p_pir->resv,
 			cl_ntoh64(p_pi->m_key), cl_ntoh64(p_pi->subnet_prefix),
 			cl_ntoh16(p_pi->base_lid),
@@ -915,8 +919,11 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			cl_ntoh16(p_pi->m_key_violations),
 			cl_ntoh16(p_pi->p_key_violations),
 			cl_ntoh16(p_pi->q_key_violations), p_pi->guid_cap,
+			ib_port_info_get_client_rereg(p_pi),
+			ib_port_info_get_mcast_pkey_trap_suppress(p_pi),
 			ib_port_info_get_timeout(p_pi), p_pi->resp_time_value,
-			p_pi->error_threshold);
+			p_pi->error_threshold, cl_ntoh16(p_pi->max_credit_hint),
+			cl_ntoh32(p_pi->link_rt_latency));
 
 		/*  show the capabilities mask */
 		if (p_pi->capability_mask) {
@@ -924,6 +931,33 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 						 p_pi);
 			osm_log(p_log, log_level, "%s", buf);
 		}
+	}
+}
+
+void osm_dump_guid_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
+			IN ib_net64_t port_guid, IN uint8_t block_num,
+			IN const ib_guid_info_t * p_gi,
+			IN osm_log_level_t log_level)
+{
+	if (osm_log_is_active(p_log, log_level)) {
+		osm_log(p_log, log_level,
+			"GUIDInfo dump:\n"
+                        "\t\t\t\tblock number............%u\n"
+                        "\t\t\t\tnode_guid...............0x%016" PRIx64 "\n"
+                        "\t\t\t\tport_guid...............0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 0..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 1..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 2..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 3..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 4..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 5..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 6..................0x%016" PRIx64 "\n"
+			"\t\t\t\tGUID 7..................0x%016" PRIx64 "\n",
+			block_num, cl_ntoh64(node_guid), cl_ntoh64(port_guid),
+			cl_ntoh64(p_gi->guid[0]), cl_ntoh64(p_gi->guid[1]),
+			cl_ntoh64(p_gi->guid[2]), cl_ntoh64(p_gi->guid[3]),
+			cl_ntoh64(p_gi->guid[4]), cl_ntoh64(p_gi->guid[5]),
+			cl_ntoh64(p_gi->guid[6]), cl_ntoh64(p_gi->guid[7]));
 	}
 }
 
@@ -2095,6 +2129,7 @@ const char *osm_get_manufacturer_str(IN uint64_t guid_ho)
 	static const char *xsigo_str = "Xsigo";
 	static const char *dell_str = "Dell";
 	static const char *supermicro_str = "SuperMicro";
+	static const char *openib_str = "OpenIB";
 	static const char *unknown_str = "Unknown";
 
 	switch ((uint32_t) (guid_ho >> (5 * 8))) {
@@ -2153,6 +2188,8 @@ const char *osm_get_manufacturer_str(IN uint64_t guid_ho)
 		return dell_str;
 	case OSM_VENDOR_ID_SUPERMICRO:
 		return supermicro_str;
+	case OSM_VENDOR_ID_OPENIB:
+		return openib_str;
 	default:
 		return unknown_str;
 	}

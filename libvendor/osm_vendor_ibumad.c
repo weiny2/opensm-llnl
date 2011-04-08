@@ -174,7 +174,7 @@ put_madw(osm_vendor_t * p_vend, osm_madw_t * p_madw, ib_net64_t tid)
 			pthread_mutex_unlock(&p_vend->match_tbl_mutex);
 			return;
 		}
-		if (oldest > m->version) {
+		if (oldest >= m->version) {
 			oldest = m->version;
 			lru = m;
 		}
@@ -1007,6 +1007,7 @@ osm_vendor_send(IN osm_bind_handle_t h_bind,
 	int ret = -1;
 	int is_rmpp = 0;
 	uint32_t sent_mad_size;
+	uint64_t tid;
 #ifndef VENDOR_RMPP_SUPPORT
 	uint32_t paylen = 0;
 #endif
@@ -1071,13 +1072,14 @@ Resp:
 	sent_mad_size = is_rmpp ? p_madw->mad_size - IB_SA_MAD_HDR_SIZE :
 	    p_madw->mad_size;
 #endif
+	tid = cl_ntoh64(p_mad->trans_id);
 	if ((ret = umad_send(p_bind->port_id, p_bind->agent_id, p_vw->umad,
 			     sent_mad_size,
 			     resp_expected ? p_bind->timeout : 0,
 			     p_bind->max_retries)) < 0) {
 		OSM_LOG(p_vend->p_log, OSM_LOG_ERROR, "ERR 5430: "
 			"Send p_madw = %p of size %d TID 0x%" PRIx64 " failed %d (%m)\n",
-			p_madw, sent_mad_size, cl_ntoh64(p_mad->trans_id), ret);
+			p_madw, sent_mad_size, tid, ret);
 		if (resp_expected) {
 			get_madw(p_vend, &p_mad->trans_id);	/* remove from aging table */
 			p_madw->status = IB_ERROR;
@@ -1092,8 +1094,8 @@ Resp:
 	if (!resp_expected)
 		osm_mad_pool_put(p_bind->p_mad_pool, p_madw);
 
-	OSM_LOG(p_vend->p_log, OSM_LOG_DEBUG, "Completed sending %s p_madw = %p\n",
-		resp_expected ? "request" : "response or unsolicited", p_madw);
+	OSM_LOG(p_vend->p_log, OSM_LOG_DEBUG, "Completed sending %s TID 0x%" PRIx64 "\n",
+		resp_expected ? "request" : "response or unsolicited", tid);
 Exit:
 	OSM_LOG_EXIT(p_vend->p_log);
 	return (ret);

@@ -255,7 +255,7 @@ static void show_usage(void)
 	printf("--timeout, -t <milliseconds>\n"
 	       "          This option specifies the time in milliseconds\n"
 	       "          used for transaction timeouts.\n"
-	       "          Specifying -t 0 disables timeouts.\n"
+	       "          Timeout values should be > 0.\n"
 	       "          Without -t, OpenSM defaults to a timeout value of\n"
 	       "          200 milliseconds.\n\n");
 	printf("--retries <number>\n"
@@ -754,9 +754,15 @@ int main(int argc, char *argv[])
 			break;
 
 		case 't':
+			val = strtoul(optarg, NULL, 0);
 			opt.transaction_timeout = strtoul(optarg, NULL, 0);
-			printf(" Transaction timeout = %u\n",
-			       opt.transaction_timeout);
+			if (val == 0)
+				fprintf(stderr, "ERROR: timeout value 0 is invalid. Ignoring it.\n");
+			else {
+				opt.transaction_timeout = val;
+				printf(" Transaction timeout = %u\n",
+				       opt.transaction_timeout);
+			}
 			break;
 
 		case 'n':
@@ -819,7 +825,7 @@ int main(int argc, char *argv[])
 			break;
 
 		case 'l':
-			temp = strtol(optarg, NULL, 0);
+			temp = strtoul(optarg, NULL, 0);
 			if (temp > 7) {
 				fprintf(stderr,
 					"ERROR: LMC must be 7 or less.\n");
@@ -884,8 +890,8 @@ int main(int argc, char *argv[])
 			break;
 
 		case 'p':
-			temp = strtol(optarg, NULL, 0);
-			if (0 > temp || 15 < temp) {
+			temp = strtoul(optarg, NULL, 0);
+			if (temp > 15) {
 				fprintf(stderr,
 					"ERROR: priority must be between 0 and 15\n");
 				return -1;
@@ -1002,8 +1008,8 @@ int main(int argc, char *argv[])
 			opt.do_mesh_analysis = TRUE;
 			break;
 		case 6:
-			temp = strtol(optarg, NULL, 0);
-			if (temp < 0 || temp >= IB_MAX_NUM_VLS) {
+			temp = strtoul(optarg, NULL, 0);
+			if (temp >= IB_MAX_NUM_VLS) {
 				fprintf(stderr,
 					"ERROR: starting lash vl must be between 0 and 15\n");
 				return -1;
@@ -1012,8 +1018,8 @@ int main(int argc, char *argv[])
 			printf(" LASH starting VL = %d\n", opt.lash_start_vl);
 			break;
 		case 7:
-			temp = strtol(optarg, NULL, 0);
-			if (temp < 0 || temp > 15) {
+			temp = strtoul(optarg, NULL, 0);
+			if (temp > 15) {
 				fprintf(stderr,
 					"ERROR: SM's SL must be between 0 and 15\n");
 				return -1;

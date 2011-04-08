@@ -1,6 +1,6 @@
 /*
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
- * Copyright (c) 2002-2009 Mellanox Technologies LTD. All rights reserved.
+ * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
  * Copyright (c) 2008 Xsigo Systems Inc.  All rights reserved.
  *
@@ -1019,6 +1019,15 @@ static void mcmr_rcv_join_mgrp(IN osm_sa_t * sa, IN osm_madw_t * p_madw)
 		goto Exit;
 	}
 
+	if (p_sa_mad->comp_mask & IB_MCR_COMPMASK_PKEY &&
+	    ib_pkey_is_invalid(p_recvd_mcmember_rec->pkey)) {
+		CL_PLOCK_RELEASE(sa->p_lock);
+		OSM_LOG(sa->p_log, OSM_LOG_VERBOSE,
+			"Invalid PKey supplied in request\n");
+		osm_sa_send_error(sa, p_madw, IB_SA_MAD_STATUS_REQ_INVALID);
+		goto Exit;
+	}
+
 	ib_member_get_scope_state(p_recvd_mcmember_rec->scope_state, NULL,
 				  &join_state);
 
@@ -1462,7 +1471,7 @@ void osm_mcmr_rcv_process(IN void *context, IN void *data)
 					  p_recvd_mcmember_rec->port_gid.raw,
 					  gid_str2, sizeof gid_str2));
 			osm_sa_send_error(sa, p_madw,
-					  IB_SA_MAD_STATUS_REQ_INVALID);
+					  IB_SA_MAD_STATUS_INSUF_COMPS);
 			goto Exit;
 		}
 
@@ -1479,7 +1488,7 @@ void osm_mcmr_rcv_process(IN void *context, IN void *data)
 				cl_ntoh64(p_sa_mad->comp_mask),
 				CL_NTOH64(JOIN_MC_COMP_MASK));
 			osm_sa_send_error(sa, p_madw,
-					  IB_SA_MAD_STATUS_REQ_INVALID);
+					  IB_SA_MAD_STATUS_INSUF_COMPS);
 			goto Exit;
 		}
 
