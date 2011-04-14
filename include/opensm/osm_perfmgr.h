@@ -100,6 +100,9 @@ typedef struct monitored_port {
 	ib_net16_t lid;
 	ib_net16_t pkey;
 	ib_net32_t qp;
+	/* ClassPortInfo fields */
+	boolean_t cpi_valid;
+	ib_net16_t cap_mask;
 } monitored_port_t;
 
 /* Node to store information about nodes being monitored */
@@ -107,6 +110,7 @@ typedef struct monitored_node {
 	cl_map_item_t map_item;
 	struct monitored_node *next;
 	uint64_t guid;
+	uint8_t node_type;
 	boolean_t esp0;
 	char *name;
 	uint32_t num_ports;
