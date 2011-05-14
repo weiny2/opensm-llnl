@@ -1401,9 +1401,17 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 							  PERFMGR_EVENT_DB_DUMP_HR);
 			}
 		} else if (strcmp(p_cmd, "print_counters") == 0) {
+			char *port = NULL;
 			p_cmd = name_token(p_last);
+			if (p_cmd) {
+				port = strchr(p_cmd, ':');
+				if (port) {
+					*port = '\0';
+					port++;
+				}
+			}
 			osm_perfmgr_print_counters(&p_osm->perfmgr, p_cmd,
-						   out);
+						   out, port);
 		} else if (strcmp(p_cmd, "dump_redir") == 0) {
 			p_cmd = name_token(p_last);
 			dump_redir(p_osm, p_cmd, out);
