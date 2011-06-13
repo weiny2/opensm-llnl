@@ -324,6 +324,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "leaf_head_of_queue_lifetime", OPT_OFFSET(leaf_head_of_queue_lifetime), opts_parse_uint8, NULL, 1 },
 	{ "local_phy_errors_threshold", OPT_OFFSET(local_phy_errors_threshold), opts_parse_uint8, NULL, 1 },
 	{ "overrun_errors_threshold", OPT_OFFSET(overrun_errors_threshold), opts_parse_uint8, NULL, 1 },
+	{ "use_mfttop", OPT_OFFSET(use_mfttop), opts_parse_boolean, NULL, 1},
 	{ "sminfo_polling_timeout", OPT_OFFSET(sminfo_polling_timeout), opts_parse_uint32, opts_setup_sminfo_polling_timeout, 1 },
 	{ "polling_retry_number", OPT_OFFSET(polling_retry_number), opts_parse_uint32, NULL, 1 },
 	{ "force_heavy_sweep", OPT_OFFSET(force_heavy_sweep), opts_parse_boolean, NULL, 1 },
@@ -423,6 +424,7 @@ void osm_subn_construct(IN osm_subn_t * p_subn)
 	cl_qmap_init(&p_subn->sw_guid_tbl);
 	cl_qmap_init(&p_subn->node_guid_tbl);
 	cl_qmap_init(&p_subn->port_guid_tbl);
+	cl_qmap_init(&p_subn->alias_port_guid_tbl);
 	cl_qmap_init(&p_subn->sm_guid_tbl);
 	cl_qlist_init(&p_subn->sa_sr_list);
 	cl_qlist_init(&p_subn->sa_infr_list);
@@ -436,6 +438,7 @@ void osm_subn_destroy(IN osm_subn_t * p_subn)
 {
 	int i;
 	osm_node_t *p_node, *p_next_node;
+	osm_alias_guid_t *p_alias_guid, *p_next_alias_guid;
 	osm_port_t *p_port, *p_next_port;
 	osm_switch_t *p_sw, *p_next_sw;
 	osm_remote_sm_t *p_rsm, *p_next_rsm;
@@ -450,6 +453,14 @@ void osm_subn_destroy(IN osm_subn_t * p_subn)
 		p_node = p_next_node;
 		p_next_node = (osm_node_t *) cl_qmap_next(&p_node->map_item);
 		osm_node_delete(&p_node);
+	}
+
+	p_next_alias_guid = (osm_alias_guid_t *) cl_qmap_head(&p_subn->alias_port_guid_tbl);
+	while (p_next_alias_guid !=
+	       (osm_alias_guid_t *) cl_qmap_end(&p_subn->alias_port_guid_tbl)) {
+		p_alias_guid = p_next_alias_guid;
+		p_next_alias_guid = (osm_alias_guid_t *) cl_qmap_next(&p_alias_guid->map_item);
+		osm_alias_guid_delete(&p_alias_guid);
 	}
 
 	p_next_port = (osm_port_t *) cl_qmap_head(&p_subn->port_guid_tbl);
@@ -635,6 +646,17 @@ osm_port_t *osm_get_port_by_guid(IN osm_subn_t const *p_subn, IN ib_net64_t guid
 	return p_port;
 }
 
+osm_port_t *osm_get_port_by_alias_guid(IN osm_subn_t const *p_subn,
+				       IN ib_net64_t guid)
+{
+	osm_alias_guid_t *p_alias_guid;
+
+	p_alias_guid = (osm_alias_guid_t *) cl_qmap_get(&(p_subn->alias_port_guid_tbl), guid);
+	if (p_alias_guid == (osm_alias_guid_t *) cl_qmap_end(&(p_subn->alias_port_guid_tbl)))
+		return NULL;
+	return p_alias_guid->p_base_port;
+}
+
 osm_port_t *osm_get_port_by_lid_ho(IN osm_subn_t const * subn, IN uint16_t lid)
 {
 	if (lid < cl_ptr_vector_get_size(&subn->port_lid_tbl))
@@ -709,6 +731,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	    OSM_DEFAULT_LEAF_HEAD_OF_QUEUE_LIFE;
 	p_opt->local_phy_errors_threshold = OSM_DEFAULT_ERROR_THRESHOLD;
 	p_opt->overrun_errors_threshold = OSM_DEFAULT_ERROR_THRESHOLD;
+	p_opt->use_mfttop = TRUE;
 	p_opt->sminfo_polling_timeout =
 	    OSM_SM_DEFAULT_POLLING_TIMEOUT_MILLISECS;
 	p_opt->polling_retry_number = OSM_SM_DEFAULT_POLLING_RETRY_NUMBER;
@@ -1335,7 +1358,9 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# Threshold of local phy errors for sending Trap 129\n"
 		"local_phy_errors_threshold 0x%02x\n\n"
 		"# Threshold of credit overrun errors for sending Trap 130\n"
-		"overrun_errors_threshold 0x%02x\n\n",
+		"overrun_errors_threshold 0x%02x\n\n"
+		"# Use SwitchInfo:MulticastFDBTop if advertised in PortInfo:CapabilityMask\n"
+		"use_mfttop %s\n\n",
 		cl_ntoh64(p_opts->guid),
 		cl_ntoh64(p_opts->m_key),
 		cl_ntoh16(p_opts->m_key_lease_period),
@@ -1355,7 +1380,8 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		p_opts->force_link_speed_file,
 		p_opts->subnet_timeout,
 		p_opts->local_phy_errors_threshold,
-		p_opts->overrun_errors_threshold);
+		p_opts->overrun_errors_threshold,
+		p_opts->use_mfttop ? "TRUE" : "FALSE");
 
 	fprintf(out,
 		"#\n# PARTITIONING OPTIONS\n#\n"
