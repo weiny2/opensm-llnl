@@ -330,7 +330,8 @@ static const opt_rec_t opt_tbl[] = {
 	{ "force_heavy_sweep", OPT_OFFSET(force_heavy_sweep), opts_parse_boolean, NULL, 1 },
 	{ "port_prof_ignore_file", OPT_OFFSET(port_prof_ignore_file), opts_parse_charp, NULL, 0 },
 	{ "hop_weights_file", OPT_OFFSET(hop_weights_file), opts_parse_charp, NULL, 0 },
-	{ "dimn_ports_file", OPT_OFFSET(dimn_ports_file), opts_parse_charp, NULL, 0 },
+	{ "dimn_ports_file", OPT_OFFSET(port_search_ordering_file), opts_parse_charp, NULL, 0 },
+	{ "port_search_ordering_file", OPT_OFFSET(port_search_ordering_file), opts_parse_charp, NULL, 0 },
 	{ "port_profile_switch_nodes", OPT_OFFSET(port_profile_switch_nodes), opts_parse_boolean, NULL, 1 },
 	{ "sweep_on_trap", OPT_OFFSET(sweep_on_trap), opts_parse_boolean, NULL, 1 },
 	{ "routing_engine", OPT_OFFSET(routing_engine_names), opts_parse_charp, NULL, 0 },
@@ -353,6 +354,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "io_guid_file", OPT_OFFSET(io_guid_file), opts_parse_charp, NULL, 0 },
 	{ "port_shifting", OPT_OFFSET(port_shifting), opts_parse_boolean, NULL, 1 },
 	{ "remote_guid_sorting", OPT_OFFSET(remote_guid_sorting), opts_parse_boolean, NULL, 1 },
+	{ "scatter_ports", OPT_OFFSET(scatter_ports), opts_parse_uint32, NULL, 0 },
 	{ "max_reverse_hops", OPT_OFFSET(max_reverse_hops), opts_parse_uint16, NULL, 0 },
 	{ "ids_guid_file", OPT_OFFSET(ids_guid_file), opts_parse_charp, NULL, 0 },
 	{ "guid_routing_order_file", OPT_OFFSET(guid_routing_order_file), opts_parse_charp, NULL, 0 },
@@ -409,6 +411,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "lash_start_vl", OPT_OFFSET(lash_start_vl), opts_parse_uint8, NULL, 1 },
 	{ "sm_sl", OPT_OFFSET(sm_sl), opts_parse_uint8, NULL, 1 },
 	{ "log_prefix", OPT_OFFSET(log_prefix), opts_parse_charp, NULL, 1 },
+	{ "scatter_ports", OPT_OFFSET(scatter_ports), opts_parse_uint32, NULL, 1 },
 	{0}
 };
 
@@ -769,7 +772,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->accum_log_file = TRUE;
 	p_opt->port_prof_ignore_file = NULL;
 	p_opt->hop_weights_file = NULL;
-	p_opt->dimn_ports_file = NULL;
+	p_opt->port_search_ordering_file = NULL;
 	p_opt->port_profile_switch_nodes = FALSE;
 	p_opt->sweep_on_trap = TRUE;
 	p_opt->use_ucast_cache = FALSE;
@@ -782,6 +785,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->io_guid_file = NULL;
 	p_opt->port_shifting = FALSE;
 	p_opt->remote_guid_sorting = FALSE;
+	p_opt->scatter_ports = OSM_DEFAULT_SCATTER_PORTS;
 	p_opt->max_reverse_hops = 0;
 	p_opt->ids_guid_file = NULL;
 	p_opt->guid_routing_order_file = NULL;
@@ -797,6 +801,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->lash_start_vl = 0;
 	p_opt->sm_sl = OSM_DEFAULT_SL;
 	p_opt->log_prefix = NULL;
+	p_opt->scatter_ports = OSM_DEFAULT_SCATTER_PORTS;
 	subn_init_qos_options(&p_opt->qos_options, NULL);
 	subn_init_qos_options(&p_opt->qos_ca_options, NULL);
 	subn_init_qos_options(&p_opt->qos_sw0_options, NULL);
@@ -1425,9 +1430,10 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		p_opts->hop_weights_file ? p_opts->hop_weights_file : null_str);
 
 	fprintf(out,
-		"# The file holding non-default port order per switch for DOR routing \n"
-		"dimn_ports_file %s\n\n",
-		p_opts->dimn_ports_file ? p_opts->dimn_ports_file : null_str);
+		"# The file holding non-default port order per switch for routing\n"
+		"port_search_ordering_file %s\n\n",
+		p_opts->port_search_ordering_file ?
+		p_opts->port_search_ordering_file : null_str);
 
 	fprintf(out,
 		"# Routing engine\n"
@@ -1507,6 +1513,12 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# Remote Guid Sorting (use FALSE if unsure)\n"
 		"remote_guid_sorting %s\n\n",
 		p_opts->remote_guid_sorting ? "TRUE" : "FALSE");
+
+	fprintf(out,
+		"# Assign ports in a random order instead of round-robin.\n"
+		"# If zero disable, otherwise use the value as a random seed\n"
+		"scatter_ports %d\n\n",
+		p_opts->scatter_ports);
 
 	fprintf(out,
 		"# SA database file name\nsa_db_file %s\n\n",

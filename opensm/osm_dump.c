@@ -221,8 +221,10 @@ static void dump_ucast_routes(cl_map_item_t * item, FILE * file, void *cxt)
 			/* No LMC Optimization */
 			best_port = osm_switch_recommend_path(p_sw, p_port,
 							      lid_ho, 1, TRUE,
-							      FALSE, dor, FALSE,
-							      FALSE);
+							      FALSE, dor,
+							      p_osm->subn.opt.port_shifting,
+							      FALSE,
+							      p_osm->subn.opt.scatter_ports);
 			fprintf(file, "No %u hop path possible via port %u!",
 				best_hops, best_port);
 		}
@@ -625,6 +627,12 @@ void osm_dump_all(osm_opensm_t * osm)
 		if (osm_log_is_active(&osm->log, OSM_LOG_DEBUG))
 			dump_qmap(stdout, &osm->subn.sw_guid_tbl,
 				  dump_ucast_path_distribution, osm);
+
+		/* An attempt to get osm_switch_recommend_path to report the
+		   same routes that a sweep would assign. */
+		if (osm->subn.opt.scatter_ports)
+			srandom(osm->subn.opt.scatter_ports);
+
 		osm_dump_qmap_to_file(osm, "opensm.fdbs",
 				      &osm->subn.sw_guid_tbl,
 				      dump_ucast_routes, osm);

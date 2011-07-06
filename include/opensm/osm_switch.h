@@ -100,7 +100,7 @@ typedef struct osm_switch {
 	uint16_t num_hops;
 	uint8_t **hops;
 	osm_port_profile_t *p_prof;
-	uint8_t *dimn_ports;
+	uint8_t *search_ordering_ports;
 	uint8_t *lft;
 	uint8_t *new_lft;
 	uint16_t lft_size;
@@ -885,9 +885,9 @@ static inline uint8_t osm_switch_get_dimn_port(IN const osm_switch_t * p_sw,
 					       IN uint8_t port_num)
 {
 	CL_ASSERT(p_sw);
-	if (p_sw->dimn_ports == NULL)
+	if (p_sw->search_ordering_ports == NULL)
 		return port_num;
-	return p_sw->dimn_ports[port_num];
+	return p_sw->search_ordering_ports[port_num];
 }
 /*
 * PARAMETERS
@@ -921,7 +921,8 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 				  IN boolean_t routing_for_lmc,
 				  IN boolean_t dor,
 				  IN boolean_t port_shifting,
-				  IN boolean_t remote_guid_sorting);
+				  IN boolean_t remote_guid_sorting,
+				  IN uint32_t scatter_ports);
 /*
 * PARAMETERS
 *	p_sw
@@ -962,6 +963,8 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 *
 *	remote_guid_sorting
 *		[in] If TRUE, remote_guid_sorting will be done.
+* 	scatter_ports
+* 		[in] If not zero, randomize the selection of the best ports.
 *
 * RETURN VALUE
 *	Returns the recommended port on which to route this LID.

@@ -26,6 +26,7 @@ opensm \- InfiniBand subnet manager and administration (SM/SA)
 [\-u | \-\-cn_guid_file <path to file>]
 [\-G | \-\-io_guid_file <path to file>]
 [\-\-port\-shifting]
+[\-\-scatter\-ports]
 [\-H | \-\-max_reverse_hops <max reverse hops allowed>]
 [\-X | \-\-guid_routing_order_file <path to file>]
 [\-m | \-\-ids_guid_file <path to file>]
@@ -38,7 +39,8 @@ opensm \- InfiniBand subnet manager and administration (SM/SA)
 [\-console-port <port>]
 [\-i(gnore-guids) <equalize-ignore-guids-file>]
 [\-w | \-\-hop_weights_file <path to file>]
-[\-O | \-\-dimn_ports_file <path to file>]
+[\-O | \-\-port_search_ordering_file <path to file>]
+[\-O | \-\-dimn_ports_file <path to file>] (DEPRECATED)
 [\-f <log file path> | \-\-log_file <log file path> ]
 [\-L | \-\-log_limit <size in MB>] [\-e(rase_log_file)]
 [\-P(config) <partition config file> ]
@@ -153,7 +155,7 @@ separated by commas so that specific ordering of routing algorithms
 will be tried if earlier routing engines fail.  If all configured
 routing engines fail, OpenSM will always attempt to route with Min Hop
 unless 'no_fallback' is included in the list of routing engines.
-Supported engines: minhop, updn, file, ftree, lash, dor, torus-2QoS.
+Supported engines: minhop, updn, dnup, file, ftree, lash, dor, torus-2QoS.
 .TP
 \fB\-\-do_mesh_analysis\fR
 This option enables additional analysis for the lash routing engine to
@@ -221,6 +223,8 @@ This option enables a feature called \fBremote guid sorting\fR.  In some
 fabrics, switches may be cabled in an inconsistent fashion.  This option
 may alleviate those issues by sorting remote guids before routing,
 making remote destinations appear to be ordered consistently.
+\fB\-\-scatter\-ports\fR
+This option will randomize port selecting in routing.
 .TP
 \fB\-H\fR, \fB\-\-max_reverse_hops\fR <file name>
 Set the maximum number of reverse hops an I/O node is allowed
@@ -291,7 +295,29 @@ factor of 1.  Lines starting with # are comments.  Weights affect only the
 output route from the port, so many useful configurations will require weights
 to be specified in pairs.
 .TP
-\fB\-O\fR, \fB\-\-dimn_ports_file\fR <path to file>
+\fB\-O\fR, \fB\-\-port_search_ordering_file\fR <path to file>
+This option tweaks the routing. It suitable for two cases:
+1. While using DOR routing algorithm.
+This option provides a mapping between hypercube dimensions and ports
+on a per switch basis for the DOR routing engine.  The file consists
+of lines containing a switch node GUID (specified as a 64 bit hex
+number, with leading 0x) followed by a list of non-zero port numbers,
+separated by spaces, one switch per line.  The order for the port
+numbers is in one to one correspondence to the dimensions.  Ports not
+listed on a line are assigned to the remaining dimensions, in port
+order.  Anything after a # is a comment.
+2. While using general routing algorithm.
+This option provides the order of the ports that would be chosen for routing,
+from each switch rather than searching for an appropriate port from port 1 to N.
+The file consists of lines containing a switch node GUID (specified as a 64 bit
+hex number, with leading 0x) followed by a list of non-zero port numbers,
+separated by spaces, one switch per line.  In case of DOR, the order for the
+port numbers is in one to one correspondence to the dimensions.  Ports not
+listed on a line are assigned to the remaining dimensions, in port
+order.  Anything after a # is a comment.
+.TP
+\fB\-O\fR, \fB\-\-dimn_ports_file\fR <path to file> \fB(DEPRECATED)\fR
+This is a deprecated flag. Please use \fB-port_search_ordering_file\fR instead.
 This option provides a mapping between hypercube dimensions and ports
 on a per switch basis for the DOR routing engine.  The file consists
 of lines containing a switch node GUID (specified as a 64 bit hex
@@ -671,7 +697,7 @@ compiling opensm with -DROUTER_EXP which has been obsoleted.
 
 .SH ROUTING
 .PP
-OpenSM now offers six routing engines:
+OpenSM now offers seven routing engines:
 
 1.  Min Hop Algorithm - based on the minimum hops to each node where the
 path length is optimized.
@@ -681,26 +707,30 @@ node, but it is constrained to ranking rules. This algorithm should be chosen
 if the subnet is not a pure Fat Tree, and deadlock may occur due to a
 loop in the subnet.
 
-3.  Fat Tree Unicast routing algorithm - this algorithm optimizes routing
+3. DNUP Unicast routing algorithm - similar to UPDN but allows routing in
+fabrics which have some CA nodes attached closer to the roots than some switch
+nodes.
+
+4.  Fat Tree Unicast routing algorithm - this algorithm optimizes routing
 for congestion-free "shift" communication pattern.
 It should be chosen if a subnet is a symmetrical or almost symmetrical
 fat-tree of various types, not just K-ary-N-Trees: non-constant K, not
 fully staffed, any Constant Bisectional Bandwidth (CBB) ratio.
 Similar to UPDN, Fat Tree routing is constrained to ranking rules.
 
-4. LASH unicast routing algorithm - uses Infiniband virtual layers
+5. LASH unicast routing algorithm - uses Infiniband virtual layers
 (SL) to provide deadlock-free shortest-path routing while also
 distributing the paths between layers. LASH is an alternative
 deadlock-free topology-agnostic routing algorithm to the non-minimal
 UPDN algorithm avoiding the use of a potentially congested root node.
 
-5. DOR Unicast routing algorithm - based on the Min Hop algorithm, but
+6. DOR Unicast routing algorithm - based on the Min Hop algorithm, but
 avoids port equalization except for redundant links between the same
 two switches.  This provides deadlock free routes for hypercubes when
 the fabric is cabled as a hypercube and for meshes when cabled as a
 mesh (see details below).
 
-6. Torus-2QoS unicast routing algorithm - a DOR-based routing algorithm
+7. Torus-2QoS unicast routing algorithm - a DOR-based routing algorithm
 specialized for 2D/3D torus topologies.  Torus-2QoS provides deadlock-free
 routing while supporting two quality of service (QoS) levels.  In addition
 it is able to route around multiple failed fabric links or a single failed
@@ -850,6 +880,18 @@ format will be discarded.
 possible to specify CA guids; OpenSM will use the guid of the switch (if
 it exists) that connects the CA to the subnet as a root node.
 
+Purpose of DNUP Algorithm
+
+The DNUP algorithm is designed to serve a similar purpose to UPDN. However
+it is intended to work in network topologies which are unsuited to
+UPDN due to nodes being connected closer to the roots than some of
+the switches.  An example would be a fabric which contains nodes and
+uplinks connected to the same switch. The operation of DNUP is the
+same as UPDN with the exception of the ranking process.  In DNUP all
+switch nodes are ranked based solely on their distance from CA Nodes,
+all switch nodes directly connected to at least one CA are assigned a
+value of 1 all other switch nodes are assigned a value of one more than
+the minimum rank of all neighbor switch nodes.
 
 Fat-tree Routing Algorithm
 

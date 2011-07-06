@@ -177,7 +177,7 @@ static void show_usage(void)
 	       "          If all configured routing engines fail, OpenSM will always\n"
 	       "          attempt to route with Min Hop unless 'no_fallback' is\n"
 	       "          included in the list of routing engines.\n"
-	       "          Supported engines: updn, file, ftree, lash, dor, torus-2QoS\n\n");
+	       "          Supported engines: updn, dnup, file, ftree, lash, dor, torus-2QoS\n\n");
 	printf("--do_mesh_analysis\n"
 	       "          This option enables additional analysis for the lash\n"
 	       "          routing engine to precondition switch port assignments\n"
@@ -229,6 +229,8 @@ static void show_usage(void)
 	printf("--remote-guid-sorting\n"
 	       "          Sort ports by remote port guid before routing to alleviate\n"
 	       "          problems with inconsistent cabling across a fabric\n\n");
+	printf("--scatter-ports <random seed>\n"
+	       "          Randomize best port chosen for a route\n\n");
 	printf("--max_reverse_hops, -H <hop_count>\n"
 	       "          Set the max number of hops the wrong way around\n"
 	       "          an I/O node is allowed to do (connectivity for I/O nodes on top swithces)\n\n");
@@ -288,7 +290,14 @@ static void show_usage(void)
 	       "          This option provides the means to define a weighting\n"
 	       "          factor per port for customizing the least weight\n"
 	       "          hops for the routing.\n\n");
-	printf("--dimn_ports_file, -O <path to file>\n"
+	printf("--port_search_ordering_file, -O <path to file>\n"
+	       "          This option provides the means to define a mapping\n"
+	       "          between ports and dimension (Order) for controlling\n"
+	       "          Dimension Order Routing (DOR).\n"
+	       "          Moreover this option provides the means to define non\n"
+	       "          default routing port order.\n\n");
+	printf("--dimn_ports_file, -O <path to file> (DEPRECATED)\n"
+	       "          Use --port_search_ordering_file instead.\n"
 	       "          This option provides the means to define a mapping\n"
 	       "          between ports and dimension (Order) for controlling\n"
 	       "          Dimension Order Routing (DOR).\n\n");
@@ -578,6 +587,7 @@ int main(int argc, char *argv[])
 		{"ignore_guids", 1, NULL, 'i'},
 		{"hop_weights_file", 1, NULL, 'w'},
 		{"dimn_ports_file", 1, NULL, 'O'},
+		{"port_search_ordering_file", 1, NULL, 'O'},
 		{"lmc", 1, NULL, 'l'},
 		{"sweep", 1, NULL, 's'},
 		{"timeout", 1, NULL, 't'},
@@ -609,6 +619,7 @@ int main(int argc, char *argv[])
 		{"io_guid_file", 1, NULL, 'G'},
 		{"port-shifting", 0, NULL, 11},
 		{"remote-guid-sorting", 0, NULL, 13},
+		{"scatter-ports", 1, NULL, 14},
 		{"max_reverse_hops", 1, NULL, 'H'},
 		{"ids_guid_file", 1, NULL, 'm'},
 		{"guid_routing_order_file", 1, NULL, 'X'},
@@ -721,9 +732,9 @@ int main(int argc, char *argv[])
 			break;
 
 		case 'O':
-			opt.dimn_ports_file = optarg;
-			printf(" Dimension Ports File = %s\n",
-			       opt.dimn_ports_file);
+			opt.port_search_ordering_file = optarg;
+			printf(" Port Search Ordering/Dimension Ports File = %s\n",
+			       opt.port_search_ordering_file);
 			break;
 
 		case 'g':
@@ -958,6 +969,9 @@ int main(int argc, char *argv[])
 		case 13:
 			opt.remote_guid_sorting = TRUE;
 			printf(" Remote Guid Sorting is on\n");
+		case 14:
+			opt.scatter_ports = strtol(optarg, NULL, 0);
+			printf(" Scatter Ports is on\n");
 			break;
 		case 'H':
 			opt.max_reverse_hops = atoi(optarg);

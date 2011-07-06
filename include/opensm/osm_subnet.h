@@ -190,7 +190,7 @@ typedef struct osm_subn_opt {
 	uint16_t console_port;
 	char *port_prof_ignore_file;
 	char *hop_weights_file;
-	char *dimn_ports_file;
+	char *port_search_ordering_file;
 	boolean_t port_profile_switch_nodes;
 	boolean_t sweep_on_trap;
 	char *routing_engine_names;
@@ -203,6 +203,7 @@ typedef struct osm_subn_opt {
 	char *io_guid_file;
 	boolean_t port_shifting;
 	boolean_t remote_guid_sorting;
+	uint32_t scatter_ports;
 	uint16_t max_reverse_hops;
 	char *ids_guid_file;
 	char *guid_routing_order_file;
@@ -513,6 +514,10 @@ typedef struct osm_subn_opt {
 *
 *	no_clients_rereg
 *		When TRUE disables clients reregistration request
+*
+*	scatter_ports
+*		When not zero, randomize best possible ports chosen
+*		for a route. The value is used as a random key seed.
 *
 * SEE ALSO
 *	Subnet object
