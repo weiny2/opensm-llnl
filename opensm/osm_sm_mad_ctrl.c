@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2005 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -55,6 +56,7 @@
 #include <opensm/osm_msgdef.h>
 #include <opensm/osm_helper.h>
 #include <opensm/osm_opensm.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
 
 /****f* opensm: SM/sm_mad_ctrl_retire_trans_mad
  * NAME
@@ -247,6 +249,15 @@ static void sm_mad_ctrl_process_get_resp(IN osm_sm_mad_ctrl_t * p_ctrl,
 		break;
 	case IB_MAD_ATTR_P_KEY_TABLE:
 		msg_id = OSM_MSG_MAD_PKEY;
+		break;
+	case IB_MAD_ATTR_VENDOR_SWITCH_INFO:
+		msg_id = OSM_MSG_MAD_VENDOR_SWITCH_INFO;
+		break;
+	case IB_MAD_ATTR_VENDOR_PORT_GROUP:
+		msg_id = OSM_MSG_MAD_VENDOR_PORT_GROUP;
+		break;
+	case IB_MAD_ATTR_VENDOR_AR_LIDMASK:
+		msg_id = OSM_MSG_MAD_VENDOR_AR_LIDMASK;
 		break;
 	case IB_MAD_ATTR_GUID_INFO:
 	case IB_MAD_ATTR_CLASS_PORT_INFO:
@@ -729,7 +740,10 @@ static void sm_mad_ctrl_send_err_cb(IN void *context, IN osm_madw_t * p_madw)
 	     p_smp->attr_id == IB_MAD_ATTR_MCAST_FWD_TBL ||
 	     p_smp->attr_id == IB_MAD_ATTR_SWITCH_INFO ||
 	     p_smp->attr_id == IB_MAD_ATTR_LIN_FWD_TBL ||
-	     p_smp->attr_id == IB_MAD_ATTR_P_KEY_TABLE)) {
+	     p_smp->attr_id == IB_MAD_ATTR_P_KEY_TABLE ||
+	     p_smp->attr_id == IB_MAD_ATTR_VENDOR_SWITCH_INFO ||
+	     p_smp->attr_id == IB_MAD_ATTR_VENDOR_PORT_GROUP ||
+	     p_smp->attr_id == IB_MAD_ATTR_VENDOR_AR_LIDMASK)) {
 		OSM_LOG(p_ctrl->p_log, OSM_LOG_ERROR, "ERR 3119: "
 			"Set method failed for attribute 0x%X (%s)\n",
 			cl_ntoh16(p_smp->attr_id),

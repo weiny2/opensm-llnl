@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2009 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -110,6 +111,7 @@ typedef struct osm_switch {
 	unsigned endport_links;
 	unsigned need_update;
 	void *priv;
+	void *vendor_data;
 	cl_map_item_t mgrp_item;
 	uint32_t num_of_mcm;
 	uint8_t is_mc_member;
@@ -154,6 +156,9 @@ typedef struct osm_switch {
 *	need_update
 *		When set indicates that switch was probably reset, so
 *		fwd tables and rest cached data should be flushed
+*
+*	vendor_data
+*		Switch data associated exclusively with a vendor.
 *
 *	mgrp_item
 *		map item for switch in building mcast tree
@@ -645,6 +650,7 @@ static inline void osm_switch_set_switch_info(IN osm_switch_t * p_sw,
 *
 * SEE ALSO
 *********/
+
 
 /****f* OpenSM: Switch/osm_switch_count_path
 * NAME

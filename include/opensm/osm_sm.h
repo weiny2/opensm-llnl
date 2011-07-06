@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2005,2009 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -145,6 +146,9 @@ typedef struct osm_sm {
 	cl_disp_reg_handle_t vla_disp_h;
 	cl_disp_reg_handle_t pkey_disp_h;
 	cl_map_t force_link_speed_except_guids;
+	cl_disp_reg_handle_t vsi_disp_h;
+	cl_disp_reg_handle_t vpg_disp_h;
+	cl_disp_reg_handle_t varlidm_disp_h;
 } osm_sm_t;
 /*
 * FIELDS
