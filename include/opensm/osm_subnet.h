@@ -230,6 +230,7 @@ typedef struct osm_subn_opt {
 	uint16_t perfmgr_sweep_time_s;
 	uint32_t perfmgr_max_outstanding_queries;
 	char *event_db_dump_file;
+	int perfmgr_rm_nodes;
 #endif				/* ENABLE_OSM_PERF_MGR */
 	char *event_plugin_name;
 	char *event_plugin_options;

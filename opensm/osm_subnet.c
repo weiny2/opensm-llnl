@@ -372,6 +372,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "perfmgr_sweep_time_s", OPT_OFFSET(perfmgr_sweep_time_s), opts_parse_uint16, NULL, 0 },
 	{ "perfmgr_max_outstanding_queries", OPT_OFFSET(perfmgr_max_outstanding_queries), opts_parse_uint32, NULL, 0 },
 	{ "event_db_dump_file", OPT_OFFSET(event_db_dump_file), opts_parse_charp, NULL, 0 },
+	{ "perfmgr_rm_nodes", OPT_OFFSET(perfmgr_rm_nodes), opts_parse_boolean, NULL, 0 },
 #endif				/* ENABLE_OSM_PERF_MGR */
 	{ "event_plugin_name", OPT_OFFSET(event_plugin_name), opts_parse_charp, NULL, 0 },
 	{ "event_plugin_options", OPT_OFFSET(event_plugin_options), opts_parse_charp, NULL, 0 },
@@ -749,6 +750,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->perfmgr_max_outstanding_queries =
 	    OSM_PERFMGR_DEFAULT_MAX_OUTSTANDING_QUERIES;
 	p_opt->event_db_dump_file = NULL; /* use default */
+	p_opt->perfmgr_rm_nodes = TRUE;
 #endif				/* ENABLE_OSM_PERF_MGR */
 
 	p_opt->event_plugin_name = NULL;
@@ -1604,11 +1606,14 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# sweep time in seconds\n"
 		"perfmgr_sweep_time_s %u\n\n"
 		"# Max outstanding queries\n"
-		"perfmgr_max_outstanding_queries %u\n\n",
+		"perfmgr_max_outstanding_queries %u\n\n"
+		"# Remove missing nodes from DB\n"
+		"perfmgr_rm_nodes %s\n",
 		p_opts->perfmgr ? "TRUE" : "FALSE",
 		p_opts->perfmgr_redir ? "TRUE" : "FALSE",
 		p_opts->perfmgr_sweep_time_s,
-		p_opts->perfmgr_max_outstanding_queries);
+		p_opts->perfmgr_max_outstanding_queries,
+		p_opts->perfmgr_rm_nodes ? "TRUE" : "FALSE");
 
 	fprintf(out,
 		"#\n# Event DB Options\n#\n"
