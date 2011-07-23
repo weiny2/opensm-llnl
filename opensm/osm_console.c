@@ -250,6 +250,11 @@ static void help_perfmgr(FILE * out, int detail)
 		fprintf(out,
 			"   [pc [<nodename|nodeguid>]] -- same as print_counters\n");
 		fprintf(out,
+			"   [print_errors [<nodename|nodeguid>]] -- print only ports with errors\n"
+			"                                           Optionaly limit output by name or guid\n");
+		fprintf(out,
+			"   [pe [<nodename|nodeguid>]] -- same as print_errors\n");
+		fprintf(out,
 			"   [dump_redir [<nodename|nodeguid>]] -- dump the redirection table\n");
 		fprintf(out,
 			"   [clear_redir [<nodename|nodeguid>]] -- clear the redirection table\n");
@@ -1438,7 +1443,12 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 				}
 			}
 			osm_perfmgr_print_counters(&p_osm->perfmgr, p_cmd,
-						   out, port);
+						   out, port, 0);
+		} else if (strcmp(p_cmd, "print_errors") == 0 ||
+			   strcmp(p_cmd, "pe") == 0) {
+			p_cmd = name_token(p_last);
+			osm_perfmgr_print_counters(&p_osm->perfmgr, p_cmd,
+						   out, NULL, 1);
 		} else if (strcmp(p_cmd, "dump_redir") == 0) {
 			p_cmd = name_token(p_last);
 			dump_redir(p_osm, p_cmd, out);
