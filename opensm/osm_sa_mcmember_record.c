@@ -285,7 +285,7 @@ static boolean_t validate_more_comp_fields(osm_log_t * p_log,
 		rate_mgrp = (uint8_t) (p_mgrp->mcmember_rec.rate & 0x3F);
 		switch (rate_sel) {
 		case 0:	/* Greater than RATE specified */
-			if (rate_mgrp <= rate_required) {
+			if (ib_path_compare_rates(rate_mgrp, rate_required) <= 0) {
 				OSM_LOG(p_log, OSM_LOG_VERBOSE,
 					"Requested mcast group has RATE %x, "
 					"which is not greater than %x\n",
@@ -294,7 +294,7 @@ static boolean_t validate_more_comp_fields(osm_log_t * p_log,
 			}
 			break;
 		case 1:	/* Less than RATE specified */
-			if (rate_mgrp >= rate_required) {
+			if (ib_path_compare_rates(rate_mgrp, rate_required) >= 0) {
 				OSM_LOG(p_log, OSM_LOG_VERBOSE,
 					"Requested mcast group has RATE %x, "
 					"which is not less than %x\n",
@@ -303,7 +303,7 @@ static boolean_t validate_more_comp_fields(osm_log_t * p_log,
 			}
 			break;
 		case 2:	/* Exactly RATE specified */
-			if (rate_mgrp != rate_required) {
+			if (ib_path_compare_rates(rate_mgrp, rate_required)) {
 				OSM_LOG(p_log, OSM_LOG_VERBOSE,
 					"Requested mcast group has RATE %x, "
 					"which is not equal to %x\n",
@@ -341,9 +341,9 @@ static boolean_t validate_port_caps(osm_log_t * p_log,
 		return FALSE;
 	}
 
-	rate_required = ib_port_info_compute_rate(&p_physp->port_info);
+	rate_required = ib_port_info_compute_rate(&p_physp->port_info, 0);
 	rate_mgrp = (uint8_t) (p_mgrp->mcmember_rec.rate & 0x3F);
-	if (rate_required < rate_mgrp) {
+	if (ib_path_compare_rates(rate_required, rate_mgrp) < 0) {
 		OSM_LOG(p_log, OSM_LOG_VERBOSE,
 			"Port's RATE %x is less than %x\n",
 			rate_required, rate_mgrp);
@@ -689,7 +689,7 @@ static boolean_t mgrp_request_is_realizable(IN osm_sa_t * sa,
 		default:
 			break;
 		}
-		/* make sure it still be in the range */
+		/* make sure it still is in the range */
 		if (mtu < IB_MIN_MTU || mtu > IB_MAX_MTU) {
 			OSM_LOG(p_log, OSM_LOG_VERBOSE,
 				"Calculated MTU %x is out of range\n", mtu);
@@ -699,7 +699,7 @@ static boolean_t mgrp_request_is_realizable(IN osm_sa_t * sa,
 	p_mcm_rec->mtu = (mtu_sel << 6) | mtu;
 
 	port_rate =
-	    p_physp ? ib_port_info_compute_rate(&p_physp->port_info) : 0;
+	    p_physp ? ib_port_info_compute_rate(&p_physp->port_info, 0) : 0;
 	if (!(comp_mask & IB_MCR_COMPMASK_RATE)
 	    || !(comp_mask & IB_MCR_COMPMASK_RATE_SEL)
 	    || (rate_sel = (p_mcm_rec->rate >> 6)) == 3)
@@ -709,7 +709,7 @@ static boolean_t mgrp_request_is_realizable(IN osm_sa_t * sa,
 		rate = rate_required;
 		switch (rate_sel) {
 		case 0:	/* Greater than RATE specified */
-			if (port_rate && rate_required >= port_rate) {
+			if (ib_path_compare_rates(rate_required, port_rate) >= 0) {
 				OSM_LOG(p_log, OSM_LOG_VERBOSE,
 					"Requested RATE %x >= the port\'s rate:%x\n",
 					rate_required, port_rate);
@@ -718,19 +718,20 @@ static boolean_t mgrp_request_is_realizable(IN osm_sa_t * sa,
 			/* we provide the largest RATE possible if we can */
 			if (port_rate)
 				rate = port_rate;
-			else if (rate_required < sa->p_subn->min_ca_rate)
+			else if (ib_path_compare_rates(rate_required,
+						       sa->p_subn->min_ca_rate) < 0)
 				rate = sa->p_subn->min_ca_rate;
 			else
-				rate++;
+				rate = ib_path_rate_get_next(rate);
 			break;
 		case 1:	/* Less than RATE specified */
 			/* use the smaller of the two:
 			   a. one lower then the required
 			   b. the rate of the requesting port (if exists) */
-			if (port_rate && rate_required > port_rate)
+			if (ib_path_compare_rates(rate_required, port_rate) > 0)
 				rate = port_rate;
 			else
-				rate--;
+				rate = ib_path_rate_get_prev(rate);
 			break;
 		case 2:	/* Exactly RATE specified */
 		default:
@@ -893,7 +894,6 @@ static void mcmr_rcv_leave_mgrp(IN osm_sa_t * sa, IN osm_madw_t * p_madw)
 	ib_sa_mad_t *p_sa_mad;
 	ib_member_rec_t *p_recvd_mcmember_rec;
 	ib_member_rec_t mcmember_rec;
-	ib_net64_t portguid;
 	osm_mcm_port_t *p_mcm_port;
 
 	OSM_LOG_ENTER(sa->p_log);
@@ -921,8 +921,6 @@ static void mcmr_rcv_leave_mgrp(IN osm_sa_t * sa, IN osm_madw_t * p_madw)
 		osm_sa_send_error(sa, p_madw, IB_SA_MAD_STATUS_REQ_INVALID);
 		goto Exit;
 	}
-
-	portguid = p_recvd_mcmember_rec->port_gid.unicast.interface_id;
 
 	/* check validity of the delete request o15-0.1.14 */
 	if (!validate_delete(sa, p_mgrp, osm_madw_get_mad_addr_ptr(p_madw),

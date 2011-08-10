@@ -838,8 +838,6 @@ static int lid_mgr_set_physp_pi(IN osm_lid_mgr_t * p_mgr,
 	 */
 
 	memcpy(payload, p_old_pi, sizeof(ib_port_info_t));
-	memset(payload + sizeof(ib_port_info_t), 0,
-	       IB_SMP_DATA_SIZE - sizeof(ib_port_info_t));
 
 	/*
 	   Should never write back a value that is bigger then 3 in
@@ -907,10 +905,12 @@ static int lid_mgr_set_physp_pi(IN osm_lid_mgr_t * p_mgr,
 			   sizeof(p_pi->link_width_enabled)))
 			send_set = TRUE;
 
-		/* M_KeyProtectBits are always zero */
+		/* M_KeyProtectBits are currently always zero */
 		p_pi->mkey_lmc = p_mgr->p_subn->opt.lmc;
-		if (memcmp(&p_pi->mkey_lmc, &p_old_pi->mkey_lmc,
-			   sizeof(p_pi->mkey_lmc)))
+		if (ib_port_info_get_lmc(p_pi) !=
+		    ib_port_info_get_lmc(p_old_pi) ||
+		    ib_port_info_get_mpb(p_pi) !=
+		    ib_port_info_get_mpb(p_old_pi))
 			send_set = TRUE;
 
 		/* calc new op_vls and mtu */
@@ -989,10 +989,12 @@ static int lid_mgr_set_physp_pi(IN osm_lid_mgr_t * p_mgr,
 
 		/* Determine if enhanced switch port 0 and if so set LMC */
 		if (osm_switch_sp0_is_lmc_capable(p_node->sw, p_mgr->p_subn)) {
-			/* M_KeyProtectBits are always zero */
+			/* M_KeyProtectBits are currently always zero */
 			p_pi->mkey_lmc = p_mgr->p_subn->opt.lmc;
-			if (memcmp(&p_pi->mkey_lmc, &p_old_pi->mkey_lmc,
-				   sizeof(p_pi->mkey_lmc)))
+			if (ib_port_info_get_lmc(p_pi) !=
+			    ib_port_info_get_lmc(p_old_pi) ||
+			    ib_port_info_get_mpb(p_pi) !=
+			    ib_port_info_get_mpb(p_old_pi))
 				send_set = TRUE;
 		}
 	}
@@ -1183,8 +1185,9 @@ int osm_lid_mgr_process_subnet(IN osm_lid_mgr_t * p_mgr)
 		   to look for any field change and will only send an updated
 		   if required */
 		OSM_LOG(p_mgr->p_log, OSM_LOG_VERBOSE,
-			"Assigned port 0x%016" PRIx64 ", LID [%u,%u]\n",
-			cl_ntoh64(port_guid), min_lid_ho, max_lid_ho);
+			"Assigned port 0x%016" PRIx64 ", %s LID [%u,%u]\n",
+			cl_ntoh64(port_guid), lid_changed ? "new" : "",
+			min_lid_ho, max_lid_ho);
 
 		/* the proc returns the fact it sent a set port info */
 		if (lid_mgr_set_physp_pi(p_mgr, p_port, p_port->p_physp,

@@ -439,6 +439,27 @@ static const char *ib_sa_attr_str[] = {
 
 #define OSM_SA_ATTR_STR_UNKNOWN_VAL (ARR_SIZE(ib_sa_attr_str) - 1)
 
+static int ordered_rates[] = {
+	0, 0,	/*  0, 1 - reserved */
+	1,	/*  2 - 2.5 Gbps */
+	3,	/*  3 - 10  Gbps */
+	6,	/*  4 - 30  Gbps */
+	2,	/*  5 - 5   Gbps */
+	5,	/*  6 - 20  Gbps */
+	8,	/*  7 - 40  Gbps */
+	9,	/*  8 - 60  Gbps */
+	11,	/*  9 - 80  Gbps */
+	12,	/* 10 - 120 Gbps */
+	4,	/* 11 -  14 Gbps (17 Gbps equiv) */
+	10,	/* 12 -  56 Gbps (68 Gbps equiv) */
+	14,	/* 13 - 112 Gbps (136 Gbps equiv) */
+	15,	/* 14 - 158 Gbps (204 Gbps equiv) */
+	7,	/* 15 -  25 Gbps (31.25 Gbps equiv) */
+	13,	/* 16 - 100 Gbps (125 Gbps equiv) */
+	16,	/* 17 - 200 Gbps (250 Gbps equiv) */
+	17	/* 18 - 300 Gbps (375 Gbps equiv) */
+};
+
 static int sprint_uint8_arr(char *buf, size_t size,
 			    const uint8_t * arr, size_t len)
 {
@@ -654,9 +675,9 @@ static void dbg_get_capabilities_str(IN char *p_buf, IN uint32_t buf_size,
 				&total_len) != IB_SUCCESS)
 			return;
 	}
-	if (p_pi->capability_mask & IB_PORT_CAP_RESV14) {
+	if (p_pi->capability_mask & IB_PORT_CAP_HAS_EXT_SPEEDS) {
 		if (dbg_do_line(&p_local, buf_size, p_prefix_str,
-				"IB_PORT_CAP_RESV14\n",
+				"IB_PORT_CAP_HAS_EXT_SPEEDS\n",
 				&total_len) != IB_SUCCESS)
 			return;
 	}
@@ -812,7 +833,10 @@ void osm_dump_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
 			"\t\t\t\tresp_time_value.........0x%X\n"
 			"\t\t\t\terror_threshold.........0x%X\n"
 			"\t\t\t\tmax_credit_hint.........0x%X\n"
-			"\t\t\t\tlink_round_trip_latency.0x%X\n",
+			"\t\t\t\tlink_round_trip_latency.0x%X\n"
+			"\t\t\t\tlink_speed_ext_active....0x%X\n"
+			"\t\t\t\tlink_speed_ext_supported.0x%X\n"
+			"\t\t\t\tlink_speed_ext_enabled...0x%X\n",
 			port_num, cl_ntoh64(node_guid), cl_ntoh64(port_guid),
 			cl_ntoh64(p_pi->m_key), cl_ntoh64(p_pi->subnet_prefix),
 			cl_ntoh16(p_pi->base_lid),
@@ -837,7 +861,10 @@ void osm_dump_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
 			ib_port_info_get_mcast_pkey_trap_suppress(p_pi),
 			ib_port_info_get_timeout(p_pi), p_pi->resp_time_value,
 			p_pi->error_threshold, cl_ntoh16(p_pi->max_credit_hint),
-			cl_ntoh32(p_pi->link_rt_latency));
+			cl_ntoh32(p_pi->link_rt_latency),
+			ib_port_info_get_link_speed_ext_active(p_pi),
+			ib_port_info_get_link_speed_ext_sup(p_pi),
+			p_pi->link_speed_ext_enabled);
 
 		/*  show the capabilities mask */
 		if (p_pi->capability_mask) {
@@ -861,7 +888,7 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			"\t\t\t\tRID\n"
 			"\t\t\t\tEndPortLid..............%u\n"
 			"\t\t\t\tPortNum.................%u\n"
-			"\t\t\t\tReserved................0x%X\n"
+			"\t\t\t\tOptions.................0x%X\n"
 			"\t\t\t\tPortInfo dump:\n"
 			"\t\t\t\tm_key...................0x%016" PRIx64 "\n"
 			"\t\t\t\tsubnet_prefix...........0x%016" PRIx64 "\n"
@@ -898,8 +925,11 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			"\t\t\t\tresp_time_value.........0x%X\n"
 			"\t\t\t\terror_threshold.........0x%X\n"
 			"\t\t\t\tmax_credit_hint.........0x%X\n"
-			"\t\t\t\tlink_round_trip_latency.0x%X\n",
-			cl_ntoh16(p_pir->lid), p_pir->port_num, p_pir->resv,
+			"\t\t\t\tlink_round_trip_latency.0x%X\n"
+			"\t\t\t\tlink_speed_ext_active....0x%X\n"
+			"\t\t\t\tlink_speed_ext_supported.0x%X\n"
+			"\t\t\t\tlink_speed_ext_enabled...0x%X\n",
+			cl_ntoh16(p_pir->lid), p_pir->port_num, p_pir->options,
 			cl_ntoh64(p_pi->m_key), cl_ntoh64(p_pi->subnet_prefix),
 			cl_ntoh16(p_pi->base_lid),
 			cl_ntoh16(p_pi->master_sm_base_lid),
@@ -923,7 +953,10 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			ib_port_info_get_mcast_pkey_trap_suppress(p_pi),
 			ib_port_info_get_timeout(p_pi), p_pi->resp_time_value,
 			p_pi->error_threshold, cl_ntoh16(p_pi->max_credit_hint),
-			cl_ntoh32(p_pi->link_rt_latency));
+			cl_ntoh32(p_pi->link_rt_latency),
+			ib_port_info_get_link_speed_ext_active(p_pi),
+			ib_port_info_get_link_speed_ext_sup(p_pi),
+			p_pi->link_speed_ext_enabled);
 
 		/*  show the capabilities mask */
 		if (p_pi->capability_mask) {
@@ -2282,4 +2315,63 @@ const char *osm_get_sm_mgr_state_str(IN uint16_t state)
 	return state < ARR_SIZE(sm_mgr_state_str) ?
 	    sm_mgr_state_str[state] :
 	    sm_mgr_state_str[ARR_SIZE(sm_mgr_state_str) - 1];
+}
+
+int ib_path_compare_rates(IN const int rate1, IN const int rate2)
+{
+	int orate1 = 0, orate2 = 0;
+
+	CL_ASSERT(rate1 >= IB_MIN_RATE && rate1 <= IB_MAX_RATE);
+	CL_ASSERT(rate2 >= IB_MIN_RATE && rate2 <= IB_MAX_RATE);
+
+	if (rate1 <= IB_MAX_RATE)
+		orate1 = ordered_rates[rate1];
+	if (rate2 <= IB_MAX_RATE)
+		orate2 = ordered_rates[rate2];
+	if (orate1 < orate2)
+		return -1;
+	if (orate1 == orate2)
+		return 0;
+	return 1;
+}
+
+static int find_ordered_rate(IN const int rate)
+{
+	int i;
+
+	for (i = IB_MIN_RATE; i <= IB_MAX_RATE; i++) {
+		if (ordered_rates[i] == rate)
+			return i;
+	}
+	return 0;
+}
+
+int ib_path_rate_get_prev(IN const int rate)
+{
+	int orate;
+
+	CL_ASSERT(rate >= IB_MIN_RATE && rate <= IB_MAX_RATE);
+
+	if (rate <= IB_MIN_RATE)
+		return 0;
+	if (rate > IB_MAX_RATE)
+		return 0;
+	orate = ordered_rates[rate];
+	orate--;
+	return find_ordered_rate(orate);
+}
+
+int ib_path_rate_get_next(IN const int rate)
+{
+	int orate;
+
+	CL_ASSERT(rate >= IB_MIN_RATE && rate <= IB_MAX_RATE);
+
+	if (rate < IB_MIN_RATE)
+		return 0;
+	if (rate >= IB_MAX_RATE)
+		return 0;
+	orate = ordered_rates[rate];
+	orate++;
+	return find_ordered_rate(orate);
 }

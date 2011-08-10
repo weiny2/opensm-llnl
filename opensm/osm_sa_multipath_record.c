@@ -189,7 +189,7 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 	p_pi = &p_physp->port_info;
 
 	mtu = ib_port_info_get_mtu_cap(p_pi);
-	rate = ib_port_info_compute_rate(p_pi);
+	rate = ib_port_info_compute_rate(p_pi, 0);
 
 	/*
 	   Mellanox Tavor device performance is better using 1K MTU.
@@ -361,8 +361,9 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 		if (mtu > ib_port_info_get_mtu_cap(p_pi))
 			mtu = ib_port_info_get_mtu_cap(p_pi);
 
-		if (rate > ib_port_info_compute_rate(p_pi))
-			rate = ib_port_info_compute_rate(p_pi);
+		if (ib_path_compare_rates(rate,
+					  ib_port_info_compute_rate(p_pi, 0)) > 0)
+			rate = ib_port_info_compute_rate(p_pi, 0);
 
 		/*
 		   Continue with the egress port on this switch.
@@ -384,8 +385,9 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 		if (mtu > ib_port_info_get_mtu_cap(p_pi))
 			mtu = ib_port_info_get_mtu_cap(p_pi);
 
-		if (rate > ib_port_info_compute_rate(p_pi))
-			rate = ib_port_info_compute_rate(p_pi);
+		if (ib_path_compare_rates(rate,
+					  ib_port_info_compute_rate(p_pi, 0)) > 0)
+			rate = ib_port_info_compute_rate(p_pi, 0);
 
 		if (sa->p_subn->opt.qos) {
 			/*
@@ -417,8 +419,9 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 	if (mtu > ib_port_info_get_mtu_cap(p_pi))
 		mtu = ib_port_info_get_mtu_cap(p_pi);
 
-	if (rate > ib_port_info_compute_rate(p_pi))
-		rate = ib_port_info_compute_rate(p_pi);
+	if (ib_path_compare_rates(rate,
+				  ib_port_info_compute_rate(p_pi, 0)) > 0)
+		rate = ib_port_info_compute_rate(p_pi, 0);
 
 	OSM_LOG(sa->p_log, OSM_LOG_DEBUG,
 		"Path min MTU = %u, min rate = %u\n", mtu, rate);
@@ -443,7 +446,7 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 			mtu = p_qos_level->mtu_limit;
 
 		if (p_qos_level->rate_limit_set
-		    && (rate > p_qos_level->rate_limit))
+		    && (ib_path_compare_rates(rate, p_qos_level->rate_limit) > 0))
 			rate = p_qos_level->rate_limit;
 
 		if (p_qos_level->sl_set) {
@@ -507,23 +510,22 @@ static ib_api_status_t mpr_rcv_get_path_parms(IN osm_sa_t * sa,
 		required_rate = ib_multipath_rec_rate(p_mpr);
 		switch (ib_multipath_rec_rate_sel(p_mpr)) {
 		case 0:	/* must be greater than */
-			if (rate <= required_rate)
+			if (ib_path_compare_rates(rate, required_rate) <= 0)
 				status = IB_NOT_FOUND;
 			break;
 
 		case 1:	/* must be less than */
-			if (rate >= required_rate) {
+			if (ib_path_compare_rates(rate, required_rate) >= 0) {
 				/* adjust the rate to use the highest rate
 				   lower then the required one */
-				if (required_rate > 2)
-					rate = required_rate - 1;
-				else
+				rate = ib_path_rate_get_prev(required_rate);
+				if (!rate)
 					status = IB_NOT_FOUND;
 			}
 			break;
 
 		case 2:	/* exact match */
-			if (rate < required_rate)
+			if (ib_path_compare_rates(rate, required_rate))
 				status = IB_NOT_FOUND;
 			else
 				rate = required_rate;
