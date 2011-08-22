@@ -311,6 +311,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "lmc_esp0", OPT_OFFSET(lmc_esp0), opts_parse_boolean, NULL, 1 },
 	{ "max_op_vls", OPT_OFFSET(max_op_vls), opts_parse_uint8, NULL, 1 },
 	{ "force_link_speed", OPT_OFFSET(force_link_speed), opts_parse_uint8, NULL, 1 },
+	{ "force_link_speed_ext", OPT_OFFSET(force_link_speed_ext), opts_parse_uint8, NULL, 1 },
 	{ "force_link_speed_file", OPT_OFFSET(force_link_speed_file), opts_parse_charp, NULL, 1 },
 	{ "reassign_lids", OPT_OFFSET(reassign_lids), opts_parse_boolean, NULL, 1 },
 	{ "ignore_other_sm", OPT_OFFSET(ignore_other_sm), opts_parse_boolean, NULL, 1 },
@@ -719,6 +720,7 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->lmc_esp0 = FALSE;
 	p_opt->max_op_vls = OSM_DEFAULT_MAX_OP_VLS;
 	p_opt->force_link_speed = 15;
+	p_opt->force_link_speed_ext = 31;
 	p_opt->force_link_speed_file = NULL;
 	p_opt->reassign_lids = FALSE;
 	p_opt->ignore_other_sm = FALSE;
@@ -1107,6 +1109,14 @@ int osm_subn_verify_config(IN osm_subn_opt_t * p_opts)
 		p_opts->force_link_speed = IB_PORT_LINK_SPEED_ENABLED_MASK;
 	}
 
+	if ((31 < p_opts->force_link_speed_ext) ||
+	    (p_opts->force_link_speed_ext > 3 && p_opts->force_link_speed_ext < 30)) {
+		log_report(" Invalid Cached Option Value:force_link_speed_ext = %u:"
+			   "Using Default:%u\n", p_opts->force_link_speed_ext,
+			   31);
+		p_opts->force_link_speed_ext = 31;
+	}
+
 	if (p_opts->max_wire_smps == 0)
 		p_opts->max_wire_smps = 0x7FFFFFFF;
 	else if (p_opts->max_wire_smps > 0x7FFFFFFF) {
@@ -1355,6 +1365,16 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"#    2,4,6,8-14 Reserved\n"
 		"#    Default 15: set to PortInfo:LinkSpeedSupported\n"
 		"force_link_speed %u\n\n"
+		"# Force PortInfo:LinkSpeedExtEnabled on ports\n"
+		"# If 0, don't modify PortInfo:LinkSpeedExtEnabled on port\n"
+		"# Otherwise, use value for PortInfo:LinkSpeedExtEnabled on port\n"
+		"# Values are (MgtWG RefID #4722)\n"
+		"#    1: 14.0625 Gbps\n"
+		"#    2: 25.78125 Gbps\n"
+		"#    3: 14.0625 Gbps or 25.78125 Gbps\n"
+		"#    30: Disable extended link speeds\n"
+		"#    Default 31: set to PortInfo:LinkSpeedExtSupported\n"
+		"force_link_speed_ext %u\n\n"
 		"# file listing GUIDs which should be ignored\n"
 		"# when forcing the link speed\n"
 		"# Only read at startup\n"
@@ -1384,6 +1404,7 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		p_opts->leaf_head_of_queue_lifetime,
 		p_opts->max_op_vls,
 		p_opts->force_link_speed,
+		p_opts->force_link_speed_ext,
 		p_opts->force_link_speed_file,
 		p_opts->subnet_timeout,
 		p_opts->local_phy_errors_threshold,
