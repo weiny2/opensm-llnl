@@ -1,21 +1,19 @@
 %define RELEASE @RELEASE@
 %define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
-# For CHAOS we always want this option.
-#%if %{?_with_console_socket:1}%{!?_with_console_socket:0}
+%if %{?_with_console_socket:1}%{!?_with_console_socket:0}
 %define _enable_console_socket --enable-console-socket
 %define _extra_build_requires tcp_wrappers
-#%endif
-#%if %{?_without_console_socket:1}%{!?_without_console_socket:0}
-#%define _disable_console_socket --disable-console-socket
-#%endif
+%endif
+%if %{?_without_console_socket:1}%{!?_without_console_socket:0}
+%define _disable_console_socket --disable-console-socket
+%endif
 
-# For CHAOS we always want this option.
-#%if %{?_with_perf_mgr:1}%{!?_with_perf_mgr:0}
+%if %{?_with_perf_mgr:1}%{!?_with_perf_mgr:0}
 %define _enable_perf_mgr --enable-perf-mgr
-#%endif
-#%if %{?_without_perf_mgr:1}%{!?_without_perf_mgr:0}
-#%define _disable_perf_mgr --disable-perf-mgr
-#%endif
+%endif
+%if %{?_without_perf_mgr:1}%{!?_without_perf_mgr:0}
+%define _disable_perf_mgr --disable-perf-mgr
+%endif
 
 # For CHAOS we always want this option.
 #%if %{?_with_event_plugin:1}%{!?_with_event_plugin:0}
