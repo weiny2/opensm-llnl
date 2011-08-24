@@ -2,7 +2,6 @@
 %define rel %{?CUSTOM_RELEASE}%{!?CUSTOM_RELEASE:%RELEASE}
 %if %{?_with_console_socket:1}%{!?_with_console_socket:0}
 %define _enable_console_socket --enable-console-socket
-%define _extra_build_requires tcp_wrappers
 %endif
 %if %{?_without_console_socket:1}%{!?_without_console_socket:0}
 %define _disable_console_socket --disable-console-socket
@@ -36,7 +35,7 @@ Group: System Environment/Daemons
 URL: http://openfabrics.org/
 Source: http://www.openfabrics.org/downloads/management/@TARBALL@
 BuildRoot: %{_tmppath}/%{name}-%{version}-%{release}-root-%(%{__id_u} -n)
-BuildRequires: tcp_wrappers-devel, bison, flex, libibumad-devel, libtool %{_extra_build_requires}
+BuildRequires: tcp_wrappers, tcp_wrappers-devel, bison, flex, libibumad-devel, libtool
 Requires: %{name}-libs = %{version}-%{release}, logrotate
 Requires(post): /sbin/service, /sbin/chkconfig
 Requires(preun): /sbin/chkconfig, /sbin/service
