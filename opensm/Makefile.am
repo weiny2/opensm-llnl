@@ -100,6 +100,9 @@ opensminclude_HEADERS = \
 	$(srcdir)/../include/opensm/osm_port.h \
 	$(srcdir)/../include/opensm/osm_port_profile.h \
 	$(srcdir)/../include/opensm/osm_prefix_route.h \
+	$(srcdir)/../include/opensm/osm_qlogic_ar.h \
+	$(srcdir)/../include/opensm/osm_qlogic_ar_config.h \
+	$(srcdir)/../include/opensm/osm_qlogic_vendor_attr.h \
 	$(srcdir)/../include/opensm/osm_qos_policy.h \
 	$(srcdir)/../include/opensm/osm_remote_sm.h \
 	$(srcdir)/../include/opensm/osm_router.h \
