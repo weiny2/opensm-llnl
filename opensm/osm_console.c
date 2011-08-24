@@ -232,7 +232,7 @@ static void help_update_desc(FILE *out, int detail)
 static void help_perfmgr(FILE * out, int detail)
 {
 	fprintf(out,
-		"perfmgr [enable|disable|clear_counters|dump_counters|print_counters|dump_redir|clear_redir|sweep_time[seconds]]\n");
+		"perfmgr(pm) [enable|disable|clear_counters|dump_counters|print_counters|dump_redir|clear_redir|sweep_time[seconds]]\n");
 	if (detail) {
 		fprintf(out,
 			"perfmgr -- print the performance manager state\n");
@@ -245,12 +245,25 @@ static void help_perfmgr(FILE * out, int detail)
 		fprintf(out,
 			"   [dump_counters [mach]] -- dump the counters (optionally in [mach]ine readable format)\n");
 		fprintf(out,
-			"   [print_counters <nodename|nodeguid>] -- print the counters for the specified node\n");
+			"   [print_counters [<nodename|nodeguid>]] -- print the internal counters\n"
+			"                                             Optionaly limit output by name or guid\n");
+		fprintf(out,
+			"   [pc [<nodename|nodeguid>]] -- same as print_counters\n");
+		fprintf(out,
+			"   [print_errors [<nodename|nodeguid>]] -- print only ports with errors\n"
+			"                                           Optionaly limit output by name or guid\n");
+		fprintf(out,
+			"   [pe [<nodename|nodeguid>]] -- same as print_errors\n");
 		fprintf(out,
 			"   [dump_redir [<nodename|nodeguid>]] -- dump the redirection table\n");
 		fprintf(out,
 			"   [clear_redir [<nodename|nodeguid>]] -- clear the redirection table\n");
 	}
+}
+static void help_pm(FILE *out, int detail)
+{
+	if (detail)
+		help_perfmgr(out, detail);
 }
 #endif				/* ENABLE_OSM_PERF_MGR */
 
@@ -1392,6 +1405,10 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 					      PERFMGR_STATE_DISABLE);
 		} else if (strcmp(p_cmd, "clear_counters") == 0) {
 			osm_perfmgr_clear_counters(&p_osm->perfmgr);
+		} else if (strcmp(p_cmd, "set_rm_nodes") == 0) {
+			osm_perfmgr_set_rm_nodes(&p_osm->perfmgr, 1);
+		} else if (strcmp(p_cmd, "clear_rm_nodes") == 0) {
+			osm_perfmgr_set_rm_nodes(&p_osm->perfmgr, 0);
 		} else if (strcmp(p_cmd, "dump_counters") == 0) {
 			p_cmd = next_token(p_last);
 			if (p_cmd && (strcmp(p_cmd, "mach") == 0)) {
@@ -1401,15 +1418,24 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 				osm_perfmgr_dump_counters(&p_osm->perfmgr,
 							  PERFMGR_EVENT_DB_DUMP_HR);
 			}
-		} else if (strcmp(p_cmd, "print_counters") == 0) {
+		} else if (strcmp(p_cmd, "print_counters") == 0 ||
+			   strcmp(p_cmd, "pc") == 0) {
+			char *port = NULL;
 			p_cmd = name_token(p_last);
 			if (p_cmd) {
-				osm_perfmgr_print_counters(&p_osm->perfmgr,
-							   p_cmd, out);
-			} else {
-				fprintf(out,
-					"print_counters requires a node name or node GUID to be specified\n");
+				port = strchr(p_cmd, ':');
+				if (port) {
+					*port = '\0';
+					port++;
+				}
 			}
+			osm_perfmgr_print_counters(&p_osm->perfmgr, p_cmd,
+						   out, port, 0);
+		} else if (strcmp(p_cmd, "print_errors") == 0 ||
+			   strcmp(p_cmd, "pe") == 0) {
+			p_cmd = name_token(p_last);
+			osm_perfmgr_print_counters(&p_osm->perfmgr, p_cmd,
+						   out, NULL, 1);
 		} else if (strcmp(p_cmd, "dump_redir") == 0) {
 			p_cmd = name_token(p_last);
 			dump_redir(p_osm, p_cmd, out);
@@ -1420,26 +1446,38 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 			p_cmd = next_token(p_last);
 			if (p_cmd) {
 				uint16_t time_s = atoi(p_cmd);
-				osm_perfmgr_set_sweep_time_s(&p_osm->perfmgr,
-							     time_s);
+				if (time_s < 1)
+					fprintf(out,
+						"sweep_time requires a "
+						"positive time period "
+						"(in seconds) to be "
+						"specified\n");
+				else
+					osm_perfmgr_set_sweep_time_s(
+							&p_osm->perfmgr,
+							time_s);
 			} else {
 				fprintf(out,
-					"sweep_time requires a time period (in seconds) to be specified\n");
+					"sweep_time requires a time period "
+					"(in seconds) to be specified\n");
 			}
 		} else {
 			fprintf(out, "\"%s\" option not found\n", p_cmd);
 		}
 	} else {
 		fprintf(out, "Performance Manager status:\n"
-			"state                   : %s\n"
-			"sweep state             : %s\n"
-			"sweep time              : %us\n"
-			"outstanding queries/max : %d/%u\n",
+			"state                        : %s\n"
+			"sweep state                  : %s\n"
+			"sweep time                   : %us\n"
+			"outstanding queries/max      : %d/%u\n"
+			"remove missing nodes from DB : %s\n",
 			osm_perfmgr_get_state_str(&p_osm->perfmgr),
 			osm_perfmgr_get_sweep_state_str(&p_osm->perfmgr),
 			osm_perfmgr_get_sweep_time_s(&p_osm->perfmgr),
 			p_osm->perfmgr.outstanding_queries,
-			p_osm->perfmgr.max_outstanding_queries);
+			p_osm->perfmgr.max_outstanding_queries,
+			osm_perfmgr_get_rm_nodes(&p_osm->perfmgr)
+						 ? "TRUE" : "FALSE");
 	}
 }
 #endif				/* ENABLE_OSM_PERF_MGR */
@@ -1583,6 +1621,7 @@ static const struct command console_cmds[] = {
 	{"version", &help_version, &version_parse},
 #ifdef ENABLE_OSM_PERF_MGR
 	{"perfmgr", &help_perfmgr, &perfmgr_parse},
+	{"pm", &help_pm, &perfmgr_parse},
 #endif				/* ENABLE_OSM_PERF_MGR */
 	{"dump_portguid", &help_dump_portguid, &dump_portguid_parse},
 	{NULL, NULL, NULL}	/* end of array */

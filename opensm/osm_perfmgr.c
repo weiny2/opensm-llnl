@@ -144,6 +144,9 @@ static void remove_marked_nodes(osm_perfmgr_t * pm)
 		cl_qmap_remove_item(&pm->monitored_map,
 				    (cl_map_item_t *) (pm->remove_list));
 
+		if (pm->rm_nodes)
+			perfmgr_db_delete_entry(pm->db, pm->remove_list->guid);
+
 		if (pm->remove_list->name)
 			free(pm->remove_list->name);
 		free(pm->remove_list);
@@ -346,17 +349,20 @@ static ib_net16_t get_lid(osm_node_t * p_node, uint8_t port,
 	return get_base_lid(p_node, port);
 }
 
+
 /**********************************************************************
- * Form and send the Port Counters MAD for a single port.
+ * Build a Performance Management class MAD
  **********************************************************************/
-static ib_api_status_t perfmgr_send_pc_mad(osm_perfmgr_t * perfmgr,
-					   ib_net16_t dest_lid,
-					   ib_net32_t dest_qp, uint16_t pkey_ix,
-					   uint8_t port, uint8_t mad_method,
-					   osm_madw_context_t * p_context)
+static osm_madw_t *perfmgr_build_mad(osm_perfmgr_t * perfmgr,
+				     ib_net16_t dest_lid,
+				     uint8_t sl,
+				     ib_net32_t dest_qp,
+				     uint16_t pkey_ix,
+				     uint8_t mad_method,
+				     ib_net16_t attr_id,
+				     osm_madw_context_t * p_context,
+				     ib_perfmgt_mad_t ** p_pm_mad)
 {
-	ib_api_status_t status = IB_SUCCESS;
-	ib_port_counters_t *port_counter = NULL;
 	ib_perfmgt_mad_t *pm_mad = NULL;
 	osm_madw_t *p_madw = NULL;
 
@@ -365,7 +371,7 @@ static ib_api_status_t perfmgr_send_pc_mad(osm_perfmgr_t * perfmgr,
 	p_madw = osm_mad_pool_get(perfmgr->mad_pool, perfmgr->bind_handle,
 				  MAD_BLOCK_SIZE, NULL);
 	if (p_madw == NULL)
-		return IB_INSUFFICIENT_MEMORY;
+		return NULL;
 
 	pm_mad = osm_madw_get_perfmgt_mad_ptr(p_madw);
 
@@ -378,29 +384,38 @@ static ib_api_status_t perfmgr_send_pc_mad(osm_perfmgr_t * perfmgr,
 	pm_mad->header.class_spec = 0;
 	pm_mad->header.trans_id =
 	    cl_hton64((uint64_t) cl_atomic_inc(&perfmgr->trans_id));
-	pm_mad->header.attr_id = IB_MAD_ATTR_PORT_CNTRS;
+	pm_mad->header.attr_id = attr_id;
 	pm_mad->header.resv = 0;
 	pm_mad->header.attr_mod = 0;
-
-	port_counter = (ib_port_counters_t *) & pm_mad->data;
-	memset(port_counter, 0, sizeof(*port_counter));
-	port_counter->port_select = port;
-	port_counter->counter_select = 0xFFFF;
 
 	p_madw->mad_addr.dest_lid = dest_lid;
 	p_madw->mad_addr.addr_type.gsi.remote_qp = dest_qp;
 	p_madw->mad_addr.addr_type.gsi.remote_qkey =
 	    cl_hton32(IB_QP1_WELL_KNOWN_Q_KEY);
 	p_madw->mad_addr.addr_type.gsi.pkey_ix = pkey_ix;
-	p_madw->mad_addr.addr_type.gsi.service_level = 0;
+	p_madw->mad_addr.addr_type.gsi.service_level = sl;
 	p_madw->mad_addr.addr_type.gsi.global_route = FALSE;
 	p_madw->resp_expected = TRUE;
 
 	if (p_context)
 		p_madw->context = *p_context;
 
-	status = osm_vendor_send(perfmgr->bind_handle, p_madw, TRUE);
+        if (p_pm_mad)
+                *p_pm_mad = pm_mad;
 
+	OSM_LOG_EXIT(perfmgr->log);
+
+	return (p_madw);
+}
+
+/**********************************************************************
+ * Send a Performance Management class MAD
+ **********************************************************************/
+static ib_api_status_t perfmgr_send_mad(osm_perfmgr_t *perfmgr,
+					osm_madw_t * const p_madw)
+{
+	ib_api_status_t status = osm_vendor_send(perfmgr->bind_handle, p_madw,
+						 TRUE);
 	if (status == IB_SUCCESS) {
 		/* pause thread if there are too many outstanding requests */
 		cl_atomic_inc(&(perfmgr->outstanding_queries));
@@ -412,6 +427,39 @@ static ib_api_status_t perfmgr_send_pc_mad(osm_perfmgr_t * perfmgr,
 			perfmgr->sweep_state = PERFMGR_SWEEP_ACTIVE;
 		}
 	}
+	return (status);
+}
+
+
+/**********************************************************************
+ * Form and send the PortCounters MAD for a single port.
+ **********************************************************************/
+static ib_api_status_t perfmgr_send_pc_mad(osm_perfmgr_t * perfmgr,
+					   ib_net16_t dest_lid,
+					   ib_net32_t dest_qp, uint16_t pkey_ix,
+					   uint8_t port, uint8_t mad_method,
+					   osm_madw_context_t * p_context,
+					   uint8_t sl)
+{
+	ib_api_status_t status = IB_SUCCESS;
+	ib_port_counters_t *port_counter = NULL;
+	ib_perfmgt_mad_t *pm_mad = NULL;
+	osm_madw_t *p_madw = NULL;
+
+	OSM_LOG_ENTER(perfmgr->log);
+
+	p_madw = perfmgr_build_mad(perfmgr, dest_lid, sl, dest_qp, pkey_ix,
+				mad_method, IB_MAD_ATTR_PORT_CNTRS, p_context,
+				&pm_mad);
+	if (p_madw == NULL)
+		return IB_INSUFFICIENT_MEMORY;
+
+	port_counter = (ib_port_counters_t *) & pm_mad->data;
+	memset(port_counter, 0, sizeof(*port_counter));
+	port_counter->port_select = port;
+	port_counter->counter_select = 0xFFFF;
+
+	status = perfmgr_send_mad(perfmgr, p_madw);
 
 	OSM_LOG_EXIT(perfmgr->log);
 	return status;
@@ -454,6 +502,7 @@ static void collect_guids(cl_map_item_t * p_map_item, void *context)
 		mon_node->guid = node_guid;
 		mon_node->name = strdup(node->print_desc);
 		mon_node->num_ports = num_ports;
+		mon_node->node_type = node->node_info.node_type;
 		/* check for enhanced switch port 0 */
 		mon_node->esp0 = (node->sw &&
 				  ib_switch_info_is_enhanced_port0(&node->sw->
@@ -473,6 +522,91 @@ static void collect_guids(cl_map_item_t * p_map_item, void *context)
 
 Exit:
 	OSM_LOG_EXIT(pm->log);
+}
+
+/**********************************************************************
+ * Form and send the ClassPortInfo MAD for a single port.
+ **********************************************************************/
+static ib_api_status_t perfmgr_send_cpi_mad(osm_perfmgr_t * pm,
+					    ib_net16_t dest_lid,
+					    ib_net32_t dest_qp,
+					    uint16_t pkey_ix,
+					    uint8_t port,
+					    osm_madw_context_t * p_context,
+					    uint8_t sl)
+{
+	ib_api_status_t status = IB_SUCCESS;
+	osm_madw_t *p_madw = NULL;
+
+	OSM_LOG_ENTER(pm->log);
+
+	p_madw = perfmgr_build_mad(pm, dest_lid, sl, dest_qp,
+				   pkey_ix, IB_MAD_METHOD_GET,
+				   IB_MAD_ATTR_CLASS_PORT_INFO, p_context,
+				   NULL);
+	if (p_madw == NULL)
+		return IB_INSUFFICIENT_MEMORY;
+
+	status = perfmgr_send_mad(pm, p_madw);
+
+	OSM_LOG_EXIT(pm->log);
+	return status;
+}
+
+/**********************************************************************
+ * return if some form of PortCountersExtended (PCE || PCE NoIETF) are supported.
+ **********************************************************************/
+static inline boolean_t pce_supported(monitored_node_t *mon_node, uint8_t port)
+{
+	monitored_port_t *mon_port = &(mon_node->port[port]);
+	return (mon_port->cpi_valid
+		&& (mon_port->cap_mask & IB_PM_EXT_WIDTH_SUPPORTED
+		|| mon_port->cap_mask & IB_PM_EXT_WIDTH_NOIETF_SUP));
+}
+
+/**********************************************************************
+ * return if "full" PortCountersExtended (IETF) is indicated
+ **********************************************************************/
+static inline boolean_t ietf_supported(monitored_node_t *mon_node, uint8_t port)
+{
+	monitored_port_t *mon_port = &(mon_node->port[port]);
+	return (mon_port->cpi_valid
+		&& (mon_port->cap_mask & IB_PM_EXT_WIDTH_SUPPORTED));
+}
+
+/**********************************************************************
+ * Form and send the PortCountersExtended MAD for a single port.
+ **********************************************************************/
+static ib_api_status_t perfmgr_send_pce_mad(osm_perfmgr_t * perfmgr,
+					    ib_net16_t dest_lid,
+					    ib_net32_t dest_qp,
+					    uint16_t pkey_ix,
+					    uint8_t port, uint8_t mad_method,
+					    osm_madw_context_t * p_context,
+					    uint8_t sl)
+{
+	ib_api_status_t status = IB_SUCCESS;
+	ib_port_counters_ext_t *port_counter_ext = NULL;
+	ib_perfmgt_mad_t *pm_mad = NULL;
+	osm_madw_t *p_madw = NULL;
+
+	OSM_LOG_ENTER(perfmgr->log);
+
+	p_madw = perfmgr_build_mad(perfmgr, dest_lid, sl, dest_qp, pkey_ix,
+				mad_method, IB_MAD_ATTR_PORT_CNTRS_EXT, p_context,
+				&pm_mad);
+	if (p_madw == NULL)
+		return IB_INSUFFICIENT_MEMORY;
+
+	port_counter_ext = (ib_port_counters_ext_t *) & pm_mad->data;
+	memset(port_counter_ext, 0, sizeof(*port_counter_ext));
+	port_counter_ext->port_select = port;
+	port_counter_ext->counter_select = cl_hton16(0xFF);
+
+	status = perfmgr_send_mad(perfmgr, p_madw);
+
+	OSM_LOG_EXIT(perfmgr->log);
+	return status;
 }
 
 /**********************************************************************
@@ -540,22 +674,64 @@ static void perfmgr_query_counters(cl_map_item_t * p_map_item, void *context)
 		mad_context.perfmgr_context.node_guid = node_guid;
 		mad_context.perfmgr_context.port = port;
 		mad_context.perfmgr_context.mad_method = IB_MAD_METHOD_GET;
+
+		if (!mon_node->port[port].cpi_valid) {
+			status = perfmgr_send_cpi_mad(pm, lid, remote_qp,
+						mon_node->port[port].pkey_ix,
+						port, &mad_context,
+						0); /* FIXME SL != 0 */
+			if (status != IB_SUCCESS)
+				OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C10: "
+					"Failed to issue ClassPortInfo query "
+					"for node 0x%" PRIx64
+					" port %d (%s)\n",
+					node->node_info.node_guid, port,
+					node->print_desc);
+			if (mon_node->node_type == IB_NODE_TYPE_SWITCH)
+				goto Exit; /* only need to issue 1 CPI query
+						for switches */
+		} else {
+
 #if ENABLE_OSM_PERF_MGR_PROFILE
-		gettimeofday(&mad_context.perfmgr_context.query_start, NULL);
+			gettimeofday(&mad_context.perfmgr_context.query_start, NULL);
 #endif
-		OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Getting stats for node 0x%"
-			PRIx64 " port %d (lid %u) (%s)\n", node_guid, port,
-			cl_ntoh16(lid), node->print_desc);
-		status = perfmgr_send_pc_mad(pm, lid, remote_qp,
-					     mon_node->port[port].pkey_ix,
-					     port, IB_MAD_METHOD_GET,
-					     &mad_context);
-		if (status != IB_SUCCESS)
-			OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C09: "
-				"Failed to issue port counter query for node 0x%"
-				PRIx64 " port %d (%s)\n",
-				node->node_info.node_guid, port,
-				node->print_desc);
+			OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Getting stats for node 0x%"
+				PRIx64 " port %d (lid %u) (%s)\n", node_guid, port,
+				cl_ntoh16(lid), node->print_desc);
+			status = perfmgr_send_pc_mad(pm, lid, remote_qp,
+						     mon_node->port[port].pkey_ix,
+						     port, IB_MAD_METHOD_GET,
+						     &mad_context,
+						     0); /* FIXME SL != 0 */
+			if (status != IB_SUCCESS)
+				OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C09: "
+					"Failed to issue port counter query for node 0x%"
+					PRIx64 " port %d (%s)\n",
+					node->node_info.node_guid, port,
+					node->print_desc);
+
+			if (pce_supported(mon_node, port)) {
+
+#if ENABLE_OSM_PERF_MGR_PROFILE
+			gettimeofday(&mad_context.perfmgr_context.query_start, NULL);
+#endif
+				status = perfmgr_send_pce_mad(pm, lid, remote_qp,
+							      mon_node->port[port].pkey_ix,
+							      port,
+							      IB_MAD_METHOD_GET,
+							      &mad_context,
+							      0); /* FIXME SL != 0 */
+				if (status != IB_SUCCESS)
+					OSM_LOG(pm->log, OSM_LOG_ERROR,
+						"ERR 4C17: Failed to issue "
+						"port counter query for "
+						"node 0x%" PRIx64 " port "
+						"%d (%s)\n",
+						node->node_info.node_guid,
+						port,
+						node->print_desc);
+			}
+		}
 	}
 Exit:
 	cl_plock_release(&pm->osm->lock);
@@ -897,11 +1073,9 @@ void osm_perfmgr_destroy(osm_perfmgr_t * pm)
  **********************************************************************/
 static void perfmgr_check_oob_clear(osm_perfmgr_t * pm,
 				    monitored_node_t * mon_node, uint8_t port,
-				    perfmgr_db_err_reading_t * cr,
-				    perfmgr_db_data_cnt_reading_t * dc)
+				    perfmgr_db_err_reading_t * cr)
 {
 	perfmgr_db_err_reading_t prev_err;
-	perfmgr_db_data_cnt_reading_t prev_dc;
 
 	if (perfmgr_db_get_prev_err(pm->db, mon_node->guid, port, &prev_err)
 	    != PERFMGR_EVENT_DB_SUCCESS) {
@@ -929,31 +1103,11 @@ static void perfmgr_check_oob_clear(osm_perfmgr_t * pm,
 			mon_node->name, mon_node->guid, port);
 		perfmgr_db_clear_prev_err(pm->db, mon_node->guid, port);
 	}
-
-	/* FIXME handle extended counters */
-	if (perfmgr_db_get_prev_dc(pm->db, mon_node->guid, port, &prev_dc)
-	    != PERFMGR_EVENT_DB_SUCCESS) {
-		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-			"Failed to find previous data count "
-			"reading for %s (0x%" PRIx64 ") port %u\n",
-			mon_node->name, mon_node->guid, port);
-		return;
-	}
-
-	if (dc->xmit_data < prev_dc.xmit_data ||
-	    dc->rcv_data < prev_dc.rcv_data ||
-	    dc->xmit_pkts < prev_dc.xmit_pkts ||
-	    dc->rcv_pkts < prev_dc.rcv_pkts) {
-		OSM_LOG(pm->log, OSM_LOG_ERROR,
-			"PerfMgr: ERR 4C0B: Detected an out of band data counter "
-			"clear on node %s (0x%" PRIx64 ") port %u\n",
-			mon_node->name, mon_node->guid, port);
-		perfmgr_db_clear_prev_dc(pm->db, mon_node->guid, port);
-	}
 }
 
 /**********************************************************************
  * Return 1 if the value is "close" to overflowing
+ * "close" is defined at 25% for now
  **********************************************************************/
 static int counter_overflow_4(uint8_t val)
 {
@@ -973,6 +1127,11 @@ static int counter_overflow_16(ib_net16_t val)
 static int counter_overflow_32(ib_net32_t val)
 {
 	return (cl_ntoh32(val) >= (UINT32_MAX - (UINT32_MAX / 4)));
+}
+
+static int counter_overflow_64(ib_net64_t val)
+{
+	return (cl_ntoh64(val) >= (UINT64_MAX - (UINT64_MAX / 4)));
 }
 
 /**********************************************************************
@@ -1001,10 +1160,11 @@ static void perfmgr_check_overflow(osm_perfmgr_t * pm,
 	    counter_overflow_4(PC_LINK_INT(pc->link_int_buffer_overrun)) ||
 	    counter_overflow_4(PC_BUF_OVERRUN(pc->link_int_buffer_overrun)) ||
 	    counter_overflow_16(pc->vl15_dropped) ||
-	    counter_overflow_32(pc->xmit_data) ||
-	    counter_overflow_32(pc->rcv_data) ||
-	    counter_overflow_32(pc->xmit_pkts) ||
-	    counter_overflow_32(pc->rcv_pkts)) {
+	    (!pce_supported(mon_node, port) &&
+	    (counter_overflow_32(pc->xmit_data) ||
+	     counter_overflow_32(pc->rcv_data) ||
+	     counter_overflow_32(pc->xmit_pkts) ||
+	     counter_overflow_32(pc->rcv_pkts)))) {
 		osm_node_t *p_node = NULL;
 		ib_net16_t lid = 0;
 
@@ -1037,7 +1197,8 @@ static void perfmgr_check_overflow(osm_perfmgr_t * pm,
 		/* clear port counters */
 		status = perfmgr_send_pc_mad(pm, lid, remote_qp, pkey_ix,
 					     port, IB_MAD_METHOD_SET,
-					     &mad_context);
+					     &mad_context,
+					     0); /* FIXME SL != 0 */
 		if (status != IB_SUCCESS)
 			OSM_LOG(pm->log, OSM_LOG_ERROR, "PerfMgr: ERR 4C11: "
 				"Failed to send clear counters MAD for %s (0x%"
@@ -1045,6 +1206,79 @@ static void perfmgr_check_overflow(osm_perfmgr_t * pm,
 				mon_node->name, mon_node->guid, port);
 
 		perfmgr_db_clear_prev_err(pm->db, mon_node->guid, port);
+		if (!pce_supported(mon_node, port))
+			perfmgr_db_clear_prev_dc(pm->db, mon_node->guid, port);
+	}
+
+Exit:
+	OSM_LOG_EXIT(pm->log);
+}
+
+/**********************************************************************
+ * Check if the port counters have overflowed and if so issue a clear
+ * MAD to the port.
+ **********************************************************************/
+static void perfmgr_check_pce_overflow(osm_perfmgr_t * pm,
+				       monitored_node_t * mon_node,
+				       int16_t pkey_ix,
+				       uint8_t port,
+				       ib_port_counters_ext_t * pc)
+{
+	osm_madw_context_t mad_context;
+	ib_api_status_t status;
+	ib_net32_t remote_qp;
+
+	OSM_LOG_ENTER(pm->log);
+
+	if (counter_overflow_64(pc->xmit_data) ||
+	    counter_overflow_64(pc->rcv_data) ||
+	    counter_overflow_64(pc->xmit_pkts) ||
+	    counter_overflow_64(pc->rcv_pkts) ||
+	    (ietf_supported(mon_node, port) &&
+	    (counter_overflow_64(pc->unicast_xmit_pkts) ||
+	    counter_overflow_64(pc->unicast_rcv_pkts) ||
+	    counter_overflow_64(pc->multicast_xmit_pkts) ||
+	    counter_overflow_64(pc->multicast_rcv_pkts)))) {
+		osm_node_t *p_node = NULL;
+		ib_net16_t lid = 0;
+
+		if (!mon_node->port[port].valid)
+			goto Exit;
+
+		osm_log(pm->log, OSM_LOG_VERBOSE,
+			"PerfMgr: PortCountersExtended overflow: %s (0x%"
+			PRIx64 ") port %d; clearing counters\n",
+			mon_node->name, mon_node->guid, port);
+
+		cl_plock_acquire(&pm->osm->lock);
+		p_node =
+		    osm_get_node_by_guid(pm->subn, cl_hton64(mon_node->guid));
+		lid = get_lid(p_node, port, mon_node);
+		cl_plock_release(&pm->osm->lock);
+		if (lid == 0) {
+			OSM_LOG(pm->log, OSM_LOG_ERROR, "PerfMgr: ERR 4C18: "
+				"Failed to clear counters for %s (0x%"
+				PRIx64 ") port %d; failed to get lid\n",
+				mon_node->name, mon_node->guid, port);
+			goto Exit;
+		}
+
+		remote_qp = get_qp(NULL, port);
+
+		mad_context.perfmgr_context.node_guid = mon_node->guid;
+		mad_context.perfmgr_context.port = port;
+		mad_context.perfmgr_context.mad_method = IB_MAD_METHOD_SET;
+		/* clear port counters */
+		status = perfmgr_send_pce_mad(pm, lid, remote_qp, pkey_ix,
+					      port, IB_MAD_METHOD_SET,
+					      &mad_context,
+					      0); /* FIXME SL != 0 */
+		if (status != IB_SUCCESS)
+			OSM_LOG(pm->log, OSM_LOG_ERROR, "PerfMgr: ERR 4C19: "
+				"Failed to send clear counters MAD for %s (0x%"
+				PRIx64 ") port %d\n",
+				mon_node->name, mon_node->guid, port);
+
 		perfmgr_db_clear_prev_dc(pm->db, mon_node->guid, port);
 	}
 
@@ -1154,6 +1388,138 @@ Exit:
 	return pkey_ix;
 }
 
+static void handle_redirect(osm_perfmgr_t *pm,
+			    ib_class_port_info_t *cpi,
+			    monitored_node_t *p_mon_node,
+			    uint8_t port,
+			    osm_madw_context_t *mad_context)
+{
+	char gid_str[INET6_ADDRSTRLEN];
+	ib_api_status_t status;
+	boolean_t valid = TRUE;
+	int16_t pkey_ix = 0;
+
+	OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+		"Redirection to LID %u GID %s QP 0x%x received\n",
+		cl_ntoh16(cpi->redir_lid),
+		inet_ntop(AF_INET6, cpi->redir_gid.raw, gid_str,
+			  sizeof gid_str), cl_ntoh32(cpi->redir_qp));
+
+	if (!pm->subn->opt.perfmgr_redir) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+			"Redirection requested but disabled\n");
+		valid = FALSE;
+	}
+
+	/* valid redirection ? */
+	if (cpi->redir_lid == 0) {
+		if (!ib_gid_is_notzero(&cpi->redir_gid)) {
+			OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+				"Invalid redirection "
+				"(both redirect LID and GID are zero)\n");
+			valid = FALSE;
+		}
+	}
+	if (cpi->redir_qp == 0) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectQP\n");
+		valid = FALSE;
+	}
+	if (cpi->redir_pkey == 0) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectP_Key\n");
+		valid = FALSE;
+	}
+	if (cpi->redir_qkey != IB_QP1_WELL_KNOWN_Q_KEY) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectQ_Key\n");
+		valid = FALSE;
+	}
+
+	pkey_ix = validate_redir_pkey(pm, cpi->redir_pkey);
+	if (pkey_ix == -1) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+			"Index for Pkey 0x%x not found\n",
+			cl_ntoh16(cpi->redir_pkey));
+		valid = FALSE;
+	}
+
+	if (cpi->redir_lid == 0) {
+		/* GID redirection: get PathRecord information */
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+			"GID redirection not currently supported\n");
+		return;
+	}
+
+	/* LID redirection support (easier than GID redirection) */
+	cl_plock_acquire(&pm->osm->lock);
+	p_mon_node->port[port].redirection = TRUE;
+	p_mon_node->port[port].valid = valid;
+	memcpy(&p_mon_node->port[port].gid, &cpi->redir_gid,
+	       sizeof(ib_gid_t));
+	p_mon_node->port[port].lid = cpi->redir_lid;
+	p_mon_node->port[port].qp = cpi->redir_qp;
+	p_mon_node->port[port].pkey = cpi->redir_pkey;
+	if (pkey_ix != -1)
+		p_mon_node->port[port].pkey_ix = pkey_ix;
+	cl_plock_release(&pm->osm->lock);
+
+	if (valid) {
+		/* Finally, issue a CPI query to the redirected location */
+		cl_plock_acquire(&pm->osm->lock);
+		p_mon_node->port[port].cpi_valid = FALSE;
+		cl_plock_release(&pm->osm->lock);
+		status = perfmgr_send_cpi_mad(pm, cpi->redir_lid,
+					      cpi->redir_qp, pkey_ix,
+					      port, mad_context,
+					      0); /* FIXME SL != 0 */
+		if (status != IB_SUCCESS)
+			OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C14: "
+				"Failed to send redirected CPI MAD "
+				"for node %s (0x%" PRIx64 ") port %d\n",
+				p_mon_node->name, p_mon_node->guid, port);
+	}
+}
+
+/**********************************************************************
+ * Detect if someone else on the network could have cleared the counters
+ * without us knowing.  This is easy to detect because the counters never
+ * wrap but are "sticky"  PortCountersExtended version.
+ *
+ * The one time this will not work is if the port is getting errors fast
+ * enough to have the reading overtake the previous reading.  In this case,
+ * counters will be missed.
+ **********************************************************************/
+static void perfmgr_check_data_cnt_oob_clear(osm_perfmgr_t * pm,
+					monitored_node_t * mon_node,
+					uint8_t port,
+					perfmgr_db_data_cnt_reading_t * dc)
+{
+	perfmgr_db_data_cnt_reading_t prev_dc;
+
+	if (perfmgr_db_get_prev_dc(pm->db, mon_node->guid, port, &prev_dc)
+	    != PERFMGR_EVENT_DB_SUCCESS) {
+		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
+			"Failed to find previous data count "
+			"reading for %s (0x%" PRIx64 ") port %u\n",
+			mon_node->name, mon_node->guid, port);
+		return;
+	}
+
+	if (dc->xmit_data < prev_dc.xmit_data ||
+	    dc->rcv_data < prev_dc.rcv_data ||
+	    dc->xmit_pkts < prev_dc.xmit_pkts ||
+	    dc->rcv_pkts < prev_dc.rcv_pkts ||
+	    (ietf_supported(mon_node, port) &&
+	    (dc->unicast_xmit_pkts < prev_dc.unicast_xmit_pkts ||
+	    dc->unicast_rcv_pkts < prev_dc.unicast_rcv_pkts ||
+	    dc->multicast_xmit_pkts < prev_dc.multicast_xmit_pkts ||
+	    dc->multicast_rcv_pkts < prev_dc.multicast_rcv_pkts))) {
+		OSM_LOG(pm->log, OSM_LOG_ERROR,
+			"PerfMgr: ERR 4C0B: Detected an out of band data counter "
+			"clear on node %s (0x%" PRIx64 ") port %u\n",
+			mon_node->name, mon_node->guid, port);
+		perfmgr_db_clear_prev_dc(pm->db, mon_node->guid, port);
+	}
+}
+
 /**********************************************************************
  * The dispatcher uses a thread pool which will call this function when
  * there is a thread available to process the mad received on the wire.
@@ -1163,8 +1529,6 @@ static void pc_recv_process(void *context, void *data)
 	osm_perfmgr_t *pm = context;
 	osm_madw_t *p_madw = data;
 	osm_madw_context_t *mad_context = &p_madw->context;
-	ib_port_counters_t *wire_read =
-	    (ib_port_counters_t *) & osm_madw_get_perfmgt_mad_ptr(p_madw)->data;
 	ib_mad_t *p_mad = osm_madw_get_mad_ptr(p_madw);
 	uint64_t node_guid = mad_context->perfmgr_context.node_guid;
 	uint8_t port = mad_context->perfmgr_context.port;
@@ -1172,8 +1536,7 @@ static void pc_recv_process(void *context, void *data)
 	perfmgr_db_data_cnt_reading_t data_reading;
 	cl_map_item_t *p_node;
 	monitored_node_t *p_mon_node;
-	int16_t pkey_ix = 0;
-	boolean_t valid = TRUE;
+	ib_class_port_info_t *cpi = NULL;
 
 	OSM_LOG_ENTER(pm->log);
 
@@ -1194,69 +1557,16 @@ static void pc_recv_process(void *context, void *data)
 		PRIx64 " port %u\n", p_mad->status, node_guid, port);
 
 	CL_ASSERT(p_mad->attr_id == IB_MAD_ATTR_PORT_CNTRS ||
+		  p_mad->attr_id == IB_MAD_ATTR_PORT_CNTRS_EXT ||
 		  p_mad->attr_id == IB_MAD_ATTR_CLASS_PORT_INFO);
 
-	/* Response could also be redirection (IBM eHCA PMA does this) */
-	if (p_mad->status & IB_MAD_STATUS_REDIRECT &&
-	    p_mad->attr_id == IB_MAD_ATTR_CLASS_PORT_INFO) {
-		char gid_str[INET6_ADDRSTRLEN];
-		ib_class_port_info_t *cpi =
-		    (ib_class_port_info_t *) &
+	/* capture CLASS_PORT_INFO data */
+	if (p_mad->attr_id == IB_MAD_ATTR_CLASS_PORT_INFO) {
+		cpi = (ib_class_port_info_t *) &
 		    (osm_madw_get_perfmgt_mad_ptr(p_madw)->data);
-		ib_api_status_t status;
 
-		OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-			"Redirection to LID %u GID %s QP 0x%x received\n",
-			cl_ntoh16(cpi->redir_lid),
-			inet_ntop(AF_INET6, cpi->redir_gid.raw, gid_str,
-				  sizeof gid_str), cl_ntoh32(cpi->redir_qp));
-
-		if (!pm->subn->opt.perfmgr_redir) {
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-				"Redirection requested but disabled\n");
-			valid = FALSE;
-		}
-
-		/* valid redirection ? */
-		if (cpi->redir_lid == 0) {
-			if (!ib_gid_is_notzero(&cpi->redir_gid)) {
-				OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-					"Invalid redirection "
-					"(both redirect LID and GID are zero)\n");
-				valid = FALSE;
-			}
-		}
-		if (cpi->redir_qp == 0) {
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectQP\n");
-			valid = FALSE;
-		}
-		if (cpi->redir_pkey == 0) {
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectP_Key\n");
-			valid = FALSE;
-		}
-		if (cpi->redir_qkey != IB_QP1_WELL_KNOWN_Q_KEY) {
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE, "Invalid RedirectQ_Key\n");
-			valid = FALSE;
-		}
-
-		pkey_ix = validate_redir_pkey(pm, cpi->redir_pkey);
-		if (pkey_ix == -1) {
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-				"Index for Pkey 0x%x not found\n",
-				cl_ntoh16(cpi->redir_pkey));
-			valid = FALSE;
-		}
-
-		if (cpi->redir_lid == 0) {
-			/* GID redirection: get PathRecord information */
-			OSM_LOG(pm->log, OSM_LOG_VERBOSE,
-				"GID redirection not currently supported\n");
-			goto Exit;
-		}
-
-		/* LID redirection support (easier than GID redirection) */
 		cl_plock_acquire(&pm->osm->lock);
-		/* Now, validate port number */
+		/* validate port number */
 		if (port >= p_mon_node->num_ports) {
 			cl_plock_release(&pm->osm->lock);
 			OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C13: "
@@ -1265,59 +1575,96 @@ static void pc_recv_process(void *context, void *data)
 				p_mon_node->num_ports);
 			goto Exit;
 		}
-		p_mon_node->port[port].redirection = TRUE;
-		p_mon_node->port[port].valid = valid;
-		memcpy(&p_mon_node->port[port].gid, &cpi->redir_gid,
-		       sizeof(ib_gid_t));
-		p_mon_node->port[port].lid = cpi->redir_lid;
-		p_mon_node->port[port].qp = cpi->redir_qp;
-		p_mon_node->port[port].pkey = cpi->redir_pkey;
-		if (pkey_ix != -1)
-			p_mon_node->port[port].pkey_ix = pkey_ix;
+		if (p_mon_node->node_type == IB_NODE_TYPE_SWITCH) {
+			int i = 0;
+			for (i = p_mon_node->esp0 ? 0 : 1;
+			     i < p_mon_node->num_ports;
+			     i++) {
+				p_mon_node->port[i].cap_mask = cpi->cap_mask;
+				p_mon_node->port[i].cpi_valid = TRUE;
+			}
+		} else {
+			p_mon_node->port[port].cap_mask = cpi->cap_mask;
+			p_mon_node->port[port].cpi_valid = TRUE;
+		}
 		cl_plock_release(&pm->osm->lock);
 
-		if (!valid)
-			goto Exit;
+		/* Response could also be redirection (IBM eHCA PMA does this) */
+		if (p_mad->status & IB_MAD_STATUS_REDIRECT)
+			handle_redirect(pm, cpi, p_mon_node, port,
+					mad_context);
 
-		/* Finally, reissue the query to the redirected location */
-		status = perfmgr_send_pc_mad(pm, cpi->redir_lid, cpi->redir_qp,
-					     pkey_ix, port,
-					     mad_context->perfmgr_context.
-					     mad_method, mad_context);
-		if (status != IB_SUCCESS)
-			OSM_LOG(pm->log, OSM_LOG_ERROR, "ERR 4C14: "
-				"Failed to send redirected MAD with method 0x%x for node 0x%"
-				PRIx64 " port %d\n",
-				mad_context->perfmgr_context.mad_method,
-				node_guid, port);
 		goto Exit;
 	}
 
-	perfmgr_db_fill_err_read(wire_read, &err_reading);
-	/* FIXME separate query for extended counters if they are supported
-	 * on the port.
-	 */
-	perfmgr_db_fill_data_cnt_read_pc(wire_read, &data_reading);
+	if (p_mad->attr_id == IB_MAD_ATTR_PORT_CNTRS_EXT) {
+		ib_port_counters_ext_t *ext_wire_read =
+				(ib_port_counters_ext_t *)
+				&osm_madw_get_perfmgt_mad_ptr(p_madw)->data;
 
-	/* detect an out of band clear on the port */
-	if (mad_context->perfmgr_context.mad_method != IB_MAD_METHOD_SET)
-		perfmgr_check_oob_clear(pm, p_mon_node, port, &err_reading,
-					&data_reading);
+		/* convert wire data to perfmgr data counter reading */
+		perfmgr_db_fill_data_cnt_read_pce(ext_wire_read, &data_reading,
+						  ietf_supported(p_mon_node,
+								 port));
 
-	/* log any critical events from this reading */
-	perfmgr_log_events(pm, p_mon_node, port, &err_reading);
+		/* detect an out of band clear on the port */
+		if (mad_context->perfmgr_context.mad_method !=
+		    IB_MAD_METHOD_SET)
+			perfmgr_check_data_cnt_oob_clear(pm, p_mon_node, port,
+						    &data_reading);
 
-	if (mad_context->perfmgr_context.mad_method == IB_MAD_METHOD_GET) {
-		perfmgr_db_add_err_reading(pm->db, node_guid, port,
-					   &err_reading);
-		perfmgr_db_add_dc_reading(pm->db, node_guid, port,
-					  &data_reading);
+		/* add counter */
+		if (mad_context->perfmgr_context.mad_method
+		    == IB_MAD_METHOD_GET) {
+			perfmgr_db_add_dc_reading(pm->db, node_guid, port,
+						  &data_reading,
+						  ietf_supported(p_mon_node,
+								 port));
+		} else {
+			perfmgr_db_clear_prev_dc(pm->db, node_guid, port);
+		}
+
+		/* check overflow */
+		perfmgr_check_pce_overflow(pm, p_mon_node,
+					   p_mon_node->port[port].pkey_ix,
+					   port, ext_wire_read);
 	} else {
-		perfmgr_db_clear_prev_err(pm->db, node_guid, port);
-		perfmgr_db_clear_prev_dc(pm->db, node_guid, port);
-	}
+		boolean_t pce_sup = pce_supported(p_mon_node, port);
+		ib_port_counters_t *wire_read =
+				(ib_port_counters_t *)
+				&osm_madw_get_perfmgt_mad_ptr(p_madw)->data;
 
-	perfmgr_check_overflow(pm, p_mon_node, pkey_ix, port, wire_read);
+		perfmgr_db_fill_err_read(wire_read, &err_reading);
+		if (!pce_sup)
+			perfmgr_db_fill_data_cnt_read_pc(wire_read, &data_reading);
+
+		/* detect an out of band clear on the port */
+		if (mad_context->perfmgr_context.mad_method != IB_MAD_METHOD_SET) {
+			perfmgr_check_oob_clear(pm, p_mon_node, port, &err_reading);
+			if (!pce_sup)
+				perfmgr_check_data_cnt_oob_clear(pm, p_mon_node, port,
+							    &data_reading);
+		}
+
+		/* log any critical events from this reading */
+		perfmgr_log_events(pm, p_mon_node, port, &err_reading);
+
+		if (mad_context->perfmgr_context.mad_method == IB_MAD_METHOD_GET) {
+			perfmgr_db_add_err_reading(pm->db, node_guid, port,
+						   &err_reading);
+			if (!pce_sup)
+				perfmgr_db_add_dc_reading(pm->db, node_guid, port,
+							  &data_reading, 0);
+		} else {
+			perfmgr_db_clear_prev_err(pm->db, node_guid, port);
+			if (!pce_sup)
+				perfmgr_db_clear_prev_dc(pm->db, node_guid, port);
+		}
+
+		perfmgr_check_overflow(pm, p_mon_node, p_mon_node->port[port].pkey_ix,
+				       port, wire_read);
+
+	}
 
 #if ENABLE_OSM_PERF_MGR_PROFILE
 	do {
@@ -1388,6 +1735,7 @@ ib_api_status_t osm_perfmgr_init(osm_perfmgr_t * pm, osm_opensm_t * osm,
 	if (pm->state == PERFMGR_STATE_ENABLED)
 		cl_timer_start(&pm->sweep_timer, pm->sweep_time_s * 1000);
 
+	pm->rm_nodes = p_opt->perfmgr_rm_nodes;
 	status = IB_SUCCESS;
 Exit:
 	OSM_LOG_EXIT(pm->log);
@@ -1429,13 +1777,19 @@ void osm_perfmgr_dump_counters(osm_perfmgr_t * pm, perfmgr_db_dump_t dump_type)
 /*******************************************************************
  * Print the DB information to the fp specified
  *******************************************************************/
-void osm_perfmgr_print_counters(osm_perfmgr_t * pm, char *nodename, FILE * fp)
+void osm_perfmgr_print_counters(osm_perfmgr_t * pm, char *nodename, FILE * fp,
+				char *port, int err_only)
 {
-	char *end = NULL;
-	uint64_t guid = strtoull(nodename, &end, 0);
-	if (nodename + strlen(nodename) != end)
-		perfmgr_db_print_by_name(pm->db, nodename, fp);
-	else
-		perfmgr_db_print_by_guid(pm->db, guid, fp);
+	if (nodename) {
+		char *end = NULL;
+		uint64_t guid = strtoull(nodename, &end, 0);
+		if (nodename + strlen(nodename) != end)
+			perfmgr_db_print_by_name(pm->db, nodename, fp, port,
+						 err_only);
+		else
+			perfmgr_db_print_by_guid(pm->db, guid, fp, port,
+						 err_only);
+	} else
+		perfmgr_db_print_all(pm->db, fp, err_only);
 }
 #endif				/* ENABLE_OSM_PERF_MGR */

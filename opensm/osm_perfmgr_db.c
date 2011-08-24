@@ -186,6 +186,19 @@ Exit:
 	return rc;
 }
 
+perfmgr_db_err_t
+perfmgr_db_delete_entry(perfmgr_db_t * db, uint64_t guid)
+{
+	cl_map_item_t * rc = cl_qmap_remove(&db->pc_data, guid);
+
+	if (rc == cl_qmap_end(&db->pc_data))
+		return(PERFMGR_EVENT_DB_GUIDNOTFOUND);
+
+	db_node_t *pc_node = (db_node_t *)rc;
+	free_node(pc_node);
+	return(PERFMGR_EVENT_DB_SUCCESS);
+}
+
 /**********************************************************************
  * Dump a reading vs the previous reading to stdout
  **********************************************************************/
@@ -398,7 +411,8 @@ debug_dump_dc_reading(perfmgr_db_t * db, uint64_t guid, uint8_t port_num,
  **********************************************************************/
 perfmgr_db_err_t
 perfmgr_db_add_dc_reading(perfmgr_db_t * db, uint64_t guid, uint8_t port,
-			  perfmgr_db_data_cnt_reading_t * reading)
+			  perfmgr_db_data_cnt_reading_t * reading,
+			  int ietf_sup)
 {
 	db_port_t *p_port = NULL;
 	db_node_t *node = NULL;
@@ -429,18 +443,22 @@ perfmgr_db_add_dc_reading(perfmgr_db_t * db, uint64_t guid, uint8_t port,
 	p_port->dc_total.xmit_pkts += epi_dc_data.xmit_pkts;
 	epi_dc_data.rcv_pkts = reading->rcv_pkts - previous->rcv_pkts;
 	p_port->dc_total.rcv_pkts += epi_dc_data.rcv_pkts;
-	epi_dc_data.unicast_xmit_pkts =
-	    reading->unicast_xmit_pkts - previous->unicast_xmit_pkts;
-	p_port->dc_total.unicast_xmit_pkts += epi_dc_data.unicast_xmit_pkts;
-	epi_dc_data.unicast_rcv_pkts =
-	    reading->unicast_rcv_pkts - previous->unicast_rcv_pkts;
-	p_port->dc_total.unicast_rcv_pkts += epi_dc_data.unicast_rcv_pkts;
-	epi_dc_data.multicast_xmit_pkts =
-	    reading->multicast_xmit_pkts - previous->multicast_xmit_pkts;
-	p_port->dc_total.multicast_xmit_pkts += epi_dc_data.multicast_xmit_pkts;
-	epi_dc_data.multicast_rcv_pkts =
-	    reading->multicast_rcv_pkts - previous->multicast_rcv_pkts;
-	p_port->dc_total.multicast_rcv_pkts += epi_dc_data.multicast_rcv_pkts;
+
+	if (ietf_sup)
+	{
+		epi_dc_data.unicast_xmit_pkts =
+		    reading->unicast_xmit_pkts - previous->unicast_xmit_pkts;
+		p_port->dc_total.unicast_xmit_pkts += epi_dc_data.unicast_xmit_pkts;
+		epi_dc_data.unicast_rcv_pkts =
+		    reading->unicast_rcv_pkts - previous->unicast_rcv_pkts;
+		p_port->dc_total.unicast_rcv_pkts += epi_dc_data.unicast_rcv_pkts;
+		epi_dc_data.multicast_xmit_pkts =
+		    reading->multicast_xmit_pkts - previous->multicast_xmit_pkts;
+		p_port->dc_total.multicast_xmit_pkts += epi_dc_data.multicast_xmit_pkts;
+		epi_dc_data.multicast_rcv_pkts =
+		    reading->multicast_rcv_pkts - previous->multicast_rcv_pkts;
+		p_port->dc_total.multicast_rcv_pkts += epi_dc_data.multicast_rcv_pkts;
+	}
 
 	p_port->dc_previous = *reading;
 
@@ -610,63 +628,159 @@ static void dump_node_mr(db_node_t * node, FILE * fp)
 	}
 }
 
+static void dump_hr_dc(FILE *fp, uint64_t val64, int data)
+{
+	char *unit = "";
+	uint64_t tmp = val64;
+	float val = 0.0;
+	int ui = 0;
+	int div = 1;
+
+	tmp /= 1024;
+	while (tmp) {
+		ui++;
+		tmp /= 1024;
+		div *= 1024;
+	}
+
+	val = (float)(val64);
+	if (data) {
+		val *= 4;
+		if (val/div > 1024) {
+			ui++;
+			div *= 1024;
+		}
+	}
+	val /= div;
+
+	switch (ui) {
+		case 1:
+			unit = "K";
+			break;
+		case 2:
+			unit = "M";
+			break;
+		case 3:
+			unit = "G";
+			break;
+		case 4:
+			unit = "T";
+			break;
+		case 5:
+			unit = "P";
+			break;
+		case 6:
+			unit = "E";
+			break;
+	}
+
+	fprintf(fp, " (%5.3f%s%s)\n", val, unit, data ? "B" : "");
+}
+
 /**********************************************************************
  * Output a human readable output of the port counters
  **********************************************************************/
-static void dump_node_hr(db_node_t * node, FILE * fp)
+static void dump_node_hr(db_node_t * node, FILE * fp, char *port, int err_only)
 {
-	int i = 0;
+	int i = (node->esp0) ? 0 : 1;
+	int num_ports = node->num_ports;
 
-	fprintf(fp, "\n");
-	for (i = (node->esp0) ? 0 : 1; i < node->num_ports; i++) {
+	if (port) {
+		char *end = NULL;
+		int p = strtoul(port, &end, 0);
+		if (port + strlen(port) == end && p >= i && p < num_ports) {
+			i = p;
+			num_ports = p+1;
+		} else {
+			fprintf(fp, "Warning: \"%s\" is not a valid port\n", port);
+		}
+	}
+	for (/* set above */; i < num_ports; i++) {
 		char *since = ctime(&node->ports[i].last_reset);
 		since[strlen(since) - 1] = '\0';	/* remove \n */
+		perfmgr_db_err_reading_t *err = &node->ports[i].err_total;
 
-		fprintf(fp, "\"%s\" 0x%" PRIx64 " port %d (Since %s)\n"
-			"     symbol_err_cnt       : %" PRIu64 "\n"
-			"     link_err_recover     : %" PRIu64 "\n"
-			"     link_downed          : %" PRIu64 "\n"
-			"     rcv_err              : %" PRIu64 "\n"
-			"     rcv_rem_phys_err     : %" PRIu64 "\n"
-			"     rcv_switch_relay_err : %" PRIu64 "\n"
-			"     xmit_discards        : %" PRIu64 "\n"
-			"     xmit_constraint_err  : %" PRIu64 "\n"
-			"     rcv_constraint_err   : %" PRIu64 "\n"
-			"     link_integrity_err   : %" PRIu64 "\n"
-			"     buf_overrun_err      : %" PRIu64 "\n"
-			"     vl15_dropped         : %" PRIu64 "\n"
-			"     xmit_data            : %" PRIu64 "\n"
-			"     rcv_data             : %" PRIu64 "\n"
-			"     xmit_pkts            : %" PRIu64 "\n"
-			"     rcv_pkts             : %" PRIu64 "\n"
-			"     unicast_xmit_pkts    : %" PRIu64 "\n"
-			"     unicast_rcv_pkts     : %" PRIu64 "\n"
-			"     multicast_xmit_pkts  : %" PRIu64 "\n"
-			"     multicast_rcv_pkts   : %" PRIu64 "\n",
-			node->node_name,
-			node->node_guid,
-			i,
-			since,
-			node->ports[i].err_total.symbol_err_cnt,
-			node->ports[i].err_total.link_err_recover,
-			node->ports[i].err_total.link_downed,
-			node->ports[i].err_total.rcv_err,
-			node->ports[i].err_total.rcv_rem_phys_err,
-			node->ports[i].err_total.rcv_switch_relay_err,
-			node->ports[i].err_total.xmit_discards,
-			node->ports[i].err_total.xmit_constraint_err,
-			node->ports[i].err_total.rcv_constraint_err,
-			node->ports[i].err_total.link_integrity,
-			node->ports[i].err_total.buffer_overrun,
-			node->ports[i].err_total.vl15_dropped,
-			node->ports[i].dc_total.xmit_data,
-			node->ports[i].dc_total.rcv_data,
-			node->ports[i].dc_total.xmit_pkts,
-			node->ports[i].dc_total.rcv_pkts,
-			node->ports[i].dc_total.unicast_xmit_pkts,
-			node->ports[i].dc_total.unicast_rcv_pkts,
-			node->ports[i].dc_total.multicast_xmit_pkts,
+		if (err_only
+		    && err->symbol_err_cnt == 0
+		    && err->link_err_recover == 0
+		    && err->link_downed == 0
+		    && err->rcv_err == 0
+		    && err->rcv_rem_phys_err == 0
+		    && err->rcv_switch_relay_err == 0
+		    && err->xmit_discards == 0
+		    && err->xmit_constraint_err == 0
+		    && err->rcv_constraint_err == 0
+		    && err->link_integrity == 0
+		    && err->buffer_overrun == 0
+		    && err->vl15_dropped == 0)
+			continue;
+
+		fprintf(fp, "\"%s\" 0x%" PRIx64 " port %d (Since %s)\n",
+			node->node_name, node->node_guid, i, since);
+
+		if (!err_only || err->symbol_err_cnt != 0)
+			fprintf(fp, "     symbol_err_cnt       : %" PRIu64 "\n",
+				err->symbol_err_cnt);
+		if (!err_only || err->link_err_recover != 0)
+			fprintf(fp, "     link_err_recover     : %" PRIu64 "\n",
+				err->link_err_recover);
+		if (!err_only || err->link_downed != 0)
+			fprintf(fp, "     link_downed          : %" PRIu64 "\n",
+				err->link_downed);
+		if (!err_only || err->rcv_err != 0)
+			fprintf(fp, "     rcv_err              : %" PRIu64 "\n",
+				err->rcv_err);
+		if (!err_only || err->rcv_rem_phys_err != 0)
+			fprintf(fp, "     rcv_rem_phys_err     : %" PRIu64 "\n",
+				err->rcv_rem_phys_err);
+		if (!err_only || err->rcv_switch_relay_err != 0)
+			fprintf(fp, "     rcv_switch_relay_err : %" PRIu64 "\n",
+				err->rcv_switch_relay_err);
+		if (!err_only || err->xmit_discards != 0)
+			fprintf(fp, "     xmit_discards        : %" PRIu64 "\n",
+				err->xmit_discards);
+		if (!err_only || err->xmit_constraint_err != 0)
+			fprintf(fp, "     xmit_constraint_err  : %" PRIu64 "\n",
+				err->xmit_constraint_err);
+		if (!err_only || err->rcv_constraint_err != 0)
+			fprintf(fp, "     rcv_constraint_err   : %" PRIu64 "\n",
+				err->rcv_constraint_err);
+		if (!err_only || err->link_integrity != 0)
+			fprintf(fp, "     link_integrity_err   : %" PRIu64 "\n",
+				err->link_integrity);
+		if (!err_only || err->buffer_overrun != 0)
+			fprintf(fp, "     buf_overrun_err      : %" PRIu64 "\n",
+				err->buffer_overrun);
+		if (!err_only || err->vl15_dropped != 0)
+			fprintf(fp, "     vl15_dropped         : %" PRIu64 "\n",
+				err->vl15_dropped);
+
+
+		fprintf(fp, "     xmit_data            : %" PRIu64,
+			node->ports[i].dc_total.xmit_data);
+		dump_hr_dc(fp, node->ports[i].dc_total.xmit_data, 1);
+		fprintf(fp, "     rcv_data             : %" PRIu64,
+			node->ports[i].dc_total.rcv_data);
+		dump_hr_dc(fp, node->ports[i].dc_total.rcv_data, 1);
+		fprintf(fp, "     xmit_pkts            : %" PRIu64,
+			node->ports[i].dc_total.xmit_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.xmit_pkts, 0);
+		fprintf(fp, "     rcv_pkts             : %" PRIu64,
+			node->ports[i].dc_total.rcv_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.rcv_pkts, 0);
+		fprintf(fp, "     unicast_xmit_pkts    : %" PRIu64,
+			node->ports[i].dc_total.unicast_xmit_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.unicast_xmit_pkts, 0);
+		fprintf(fp, "     unicast_rcv_pkts     : %" PRIu64,
+			node->ports[i].dc_total.unicast_rcv_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.unicast_rcv_pkts, 0);
+		fprintf(fp, "     multicast_xmit_pkts  : %" PRIu64,
+			node->ports[i].dc_total.multicast_xmit_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.multicast_xmit_pkts, 0);
+		fprintf(fp, "     multicast_rcv_pkts   : %" PRIu64,
 			node->ports[i].dc_total.multicast_rcv_pkts);
+		dump_hr_dc(fp, node->ports[i].dc_total.multicast_rcv_pkts, 0);
+
 	}
 }
 
@@ -688,16 +802,36 @@ static void db_dump(cl_map_item_t * const p_map_item, void *context)
 		break;
 	case PERFMGR_EVENT_DB_DUMP_HR:
 	default:
-		dump_node_hr(node, fp);
+		dump_node_hr(node, fp, NULL, 0);
 		break;
 	}
+}
+
+/**********************************************************************
+ * print all node data to fp
+ **********************************************************************/
+void
+perfmgr_db_print_all(perfmgr_db_t * db, FILE *fp, int err_only)
+{
+	cl_map_item_t *item;
+	db_node_t *node;
+
+	cl_plock_acquire(&db->lock);
+	item = cl_qmap_head(&db->pc_data);
+	while (item != cl_qmap_end(&db->pc_data)) {
+		node = (db_node_t *)item;
+		dump_node_hr(node, fp, NULL, err_only);
+		item = cl_qmap_next(item);
+	}
+	cl_plock_release(&db->lock);
 }
 
 /**********************************************************************
  * print node data to fp
  **********************************************************************/
 void
-perfmgr_db_print_by_name(perfmgr_db_t * db, char *nodename, FILE *fp)
+perfmgr_db_print_by_name(perfmgr_db_t * db, char *nodename, FILE *fp,
+			 char *port, int err_only)
 {
 	cl_map_item_t *item;
 	db_node_t *node;
@@ -709,7 +843,7 @@ perfmgr_db_print_by_name(perfmgr_db_t * db, char *nodename, FILE *fp)
 	while (item != cl_qmap_end(&db->pc_data)) {
 		node = (db_node_t *)item;
 		if (strcmp(node->node_name, nodename) == 0) {
-			dump_node_hr(node, fp);
+			dump_node_hr(node, fp, port, err_only);
 			goto done;
 		}
 		item = cl_qmap_next(item);
@@ -724,7 +858,8 @@ done:
  * print node data to fp
  **********************************************************************/
 void
-perfmgr_db_print_by_guid(perfmgr_db_t * db, uint64_t nodeguid, FILE *fp)
+perfmgr_db_print_by_guid(perfmgr_db_t * db, uint64_t nodeguid, FILE *fp,
+			 char *port, int err_only)
 {
 	cl_map_item_t *node;
 
@@ -732,7 +867,7 @@ perfmgr_db_print_by_guid(perfmgr_db_t * db, uint64_t nodeguid, FILE *fp)
 
 	node = cl_qmap_get(&db->pc_data, nodeguid);
 	if (node != cl_qmap_end(&db->pc_data))
-		dump_node_hr((db_node_t *)node, fp);
+		dump_node_hr((db_node_t *)node, fp, port, err_only);
 	else
 		fprintf(fp, "Node 0x%" PRIx64 " not found...\n", nodeguid);
 
@@ -801,18 +936,22 @@ perfmgr_db_fill_data_cnt_read_pc(ib_port_counters_t * wire_read,
 }
 
 void
-perfmgr_db_fill_data_cnt_read_epc(ib_port_counters_ext_t * wire_read,
-				  perfmgr_db_data_cnt_reading_t * reading)
+perfmgr_db_fill_data_cnt_read_pce(ib_port_counters_ext_t * wire_read,
+				  perfmgr_db_data_cnt_reading_t * reading,
+				  int ietf_sup)
 {
 	reading->xmit_data = cl_ntoh64(wire_read->xmit_data);
 	reading->rcv_data = cl_ntoh64(wire_read->rcv_data);
 	reading->xmit_pkts = cl_ntoh64(wire_read->xmit_pkts);
 	reading->rcv_pkts = cl_ntoh64(wire_read->rcv_pkts);
-	reading->unicast_xmit_pkts = cl_ntoh64(wire_read->unicast_xmit_pkts);
-	reading->unicast_rcv_pkts = cl_ntoh64(wire_read->unicast_rcv_pkts);
-	reading->multicast_xmit_pkts =
-	    cl_ntoh64(wire_read->multicast_xmit_pkts);
-	reading->multicast_rcv_pkts = cl_ntoh64(wire_read->multicast_rcv_pkts);
+	if (ietf_sup)
+	{
+		reading->unicast_xmit_pkts = cl_ntoh64(wire_read->unicast_xmit_pkts);
+		reading->unicast_rcv_pkts = cl_ntoh64(wire_read->unicast_rcv_pkts);
+		reading->multicast_xmit_pkts =
+		    cl_ntoh64(wire_read->multicast_xmit_pkts);
+		reading->multicast_rcv_pkts = cl_ntoh64(wire_read->multicast_rcv_pkts);
+	}
 	reading->time = time(NULL);
 }
 #endif				/* ENABLE_OSM_PERF_MGR */
