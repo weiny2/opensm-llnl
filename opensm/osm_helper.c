@@ -507,6 +507,9 @@ const char *ib_get_sm_attr_str(IN ib_net16_t attr)
 	if (host_attr < OSM_SM_ATTR_STR_UNKNOWN_VAL)
 		return ib_sm_attr_str[host_attr];
 
+	if (attr == IB_MAD_ATTR_MLNX_EXTENDED_PORT_INFO)
+		return "MLNXExtendedPortInfo";
+
 	if (attr == IB_MAD_ATTR_VENDOR_SWITCH_INFO) {
 		return "VendorSwitchInfo";
 	} else if (attr == IB_MAD_ATTR_VENDOR_PORT_GROUP) {
@@ -691,9 +694,9 @@ static void dbg_get_capabilities_str(IN char *p_buf, IN uint32_t buf_size,
 				&total_len) != IB_SUCCESS)
 			return;
 	}
-	if (p_pi->capability_mask & IB_PORT_CAP_RESV15) {
+	if (p_pi->capability_mask & IB_PORT_CAP_HAS_CAP_MASK2) {
 		if (dbg_do_line(&p_local, buf_size, p_prefix_str,
-				"IB_PORT_CAP_RESV15\n",
+				"IB_PORT_CAP_HAS_CAP_MASK2\n",
 				&total_len) != IB_SUCCESS)
 			return;
 	}
@@ -844,6 +847,7 @@ void osm_dump_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
 			"\t\t\t\terror_threshold..........0x%X\n"
 			"\t\t\t\tmax_credit_hint..........0x%X\n"
 			"\t\t\t\tlink_round_trip_latency..0x%X\n"
+			"\t\t\t\tcapability_mask2.........0x%X\n"
 			"\t\t\t\tlink_speed_ext_active....0x%X\n"
 			"\t\t\t\tlink_speed_ext_supported.0x%X\n"
 			"\t\t\t\tlink_speed_ext_enabled...0x%X\n",
@@ -873,6 +877,7 @@ void osm_dump_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
 			ib_port_info_get_resp_time_value(p_pi),
 			p_pi->error_threshold, cl_ntoh16(p_pi->max_credit_hint),
 			cl_ntoh32(p_pi->link_rt_latency),
+			cl_ntoh16(p_pi->capability_mask2),
 			ib_port_info_get_link_speed_ext_active(p_pi),
 			ib_port_info_get_link_speed_ext_sup(p_pi),
 			p_pi->link_speed_ext_enabled);
@@ -883,6 +888,27 @@ void osm_dump_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
 						 p_pi);
 			osm_log(p_log, log_level, "%s", buf);
 		}
+	}
+}
+
+void osm_dump_mlnx_ext_port_info(IN osm_log_t * p_log, IN ib_net64_t node_guid,
+				 IN ib_net64_t port_guid, IN uint8_t port_num,
+				 IN const ib_mlnx_ext_port_info_t * p_pi,
+				 IN osm_log_level_t log_level)
+{
+	if (osm_log_is_active(p_log, log_level)) {
+		osm_log(p_log, log_level,
+			"MLNX ExtendedPortInfo dump:\n"
+			"\t\t\t\tport number..............%u\n"
+			"\t\t\t\tnode_guid................0x%016" PRIx64 "\n"
+			"\t\t\t\tport_guid................0x%016" PRIx64 "\n"
+			"\t\t\t\tStateChangeEnable........0x%X\n"
+			"\t\t\t\tLinkSpeedSupported.......0x%X\n"
+			"\t\t\t\tLinkSpeedEnabled.........0x%X\n"
+			"\t\t\t\tLinkSpeedActive..........0x%X\n",
+			port_num, cl_ntoh64(node_guid), cl_ntoh64(port_guid),
+			p_pi->state_change_enable, p_pi->link_speed_supported,
+			p_pi->link_speed_enabled, p_pi->link_speed_active);
 	}
 }
 
@@ -937,6 +963,7 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			"\t\t\t\terror_threshold..........0x%X\n"
 			"\t\t\t\tmax_credit_hint..........0x%X\n"
 			"\t\t\t\tlink_round_trip_latency..0x%X\n"
+			"\t\t\t\tcapability_mask2.........0x%X\n"
 			"\t\t\t\tlink_speed_ext_active....0x%X\n"
 			"\t\t\t\tlink_speed_ext_supported.0x%X\n"
 			"\t\t\t\tlink_speed_ext_enabled...0x%X\n",
@@ -966,6 +993,7 @@ void osm_dump_portinfo_record(IN osm_log_t * p_log,
 			ib_port_info_get_resp_time_value(p_pi),
 			p_pi->error_threshold, cl_ntoh16(p_pi->max_credit_hint),
 			cl_ntoh32(p_pi->link_rt_latency),
+			cl_ntoh16(p_pi->capability_mask2),
 			ib_port_info_get_link_speed_ext_active(p_pi),
 			ib_port_info_get_link_speed_ext_sup(p_pi),
 			p_pi->link_speed_ext_enabled);
@@ -2105,6 +2133,7 @@ static const char *disp_msg_str[] = {
 	"OSM_MSG_MAD_MULTIPATH_RECORD",
 #endif
 	"OSM_MSG_MAD_PORT_COUNTERS",
+	"OSM_MSG_MAD_MLNX_EXT_PORT_INFO",
 	"OSM_MSM_MAD_VENDOR_SWITCH_INFO",
 	"OSM_MSM_MAD_VENDOR_PORT_GROUP",
 	"OSM_MSM_MAD_VENDOR_AR_LIDMASK",
@@ -2280,25 +2309,30 @@ const char *osm_get_lwa_str(IN uint8_t lwa)
 }
 
 static const char *lsa_str_fixed_width[] = {
-	"Ext",
-	"2.5",
-	"5  ",
-	"???",
-	"10 "
+	"Ext ",
+	"2.5 ",
+	"5   ",
+	"????",
+	"10  "
 };
 
 static const char *lsea_str_fixed_width[] = {
-	"Std",
-	"14 ",
-	"25 "
+	"Std ",
+	"14  ",
+	"25  "
 };
 
-const char *osm_get_lsa_str(IN uint8_t lsa, IN uint8_t lsea, IN uint8_t state)
+const char *osm_get_lsa_str(IN uint8_t lsa, IN uint8_t lsea, IN uint8_t state,
+			    IN uint8_t fdr10)
 {
 	if (lsa > IB_LINK_SPEED_ACTIVE_10)
 		return lsa_str_fixed_width[3];
-	if (lsea == IB_LINK_SPEED_EXT_ACTIVE_NONE)
-		return lsa_str_fixed_width[lsa];
+	if (lsea == IB_LINK_SPEED_EXT_ACTIVE_NONE) {
+		if (fdr10)
+			return "FDR10";
+		else
+			return lsa_str_fixed_width[lsa];
+	}
 	if (lsea > IB_LINK_SPEED_EXT_ACTIVE_25)
 		return lsa_str_fixed_width[3];
 	return lsea_str_fixed_width[lsea];
