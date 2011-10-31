@@ -223,7 +223,8 @@ static void dump_ucast_routes(cl_map_item_t * item, FILE * file, void *cxt)
 							      lid_ho, 1, TRUE,
 							      FALSE, dor,
 							      p_osm->subn.opt.port_shifting,
-							      p_osm->subn.opt.scatter_ports);
+							      p_osm->subn.opt.scatter_ports,
+							      p_osm->subn.opt.remote_guid_sorting);
 			fprintf(file, "No %u hop path possible via port %u!",
 				best_hops, best_port);
 		}

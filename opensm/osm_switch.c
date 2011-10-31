@@ -57,6 +57,7 @@ struct switch_port_path {
 	int found_sys_guid;
 	int found_node_guid;
 	uint32_t forwarded_to;
+	uint64_t remote_node_guid;
 };
 
 cl_status_t osm_switch_set_hops(IN osm_switch_t * p_sw, IN uint16_t lid_ho,
@@ -169,6 +170,19 @@ boolean_t osm_switch_get_lft_block(IN const osm_switch_t * p_sw,
 	return TRUE;
 }
 
+static int
+port_path_guid_cmp(IN const void *x, IN const void *y)
+{
+	struct switch_port_path *a = (struct switch_port_path *)x;
+	struct switch_port_path *b = (struct switch_port_path *)y;
+
+	if (a->remote_node_guid < b->remote_node_guid)
+		return -1;
+	if (a->remote_node_guid > b->remote_node_guid)
+		return 1;
+	return 0;
+}
+
 static struct osm_remote_node *
 switch_find_guid_common(IN const osm_switch_t * p_sw,
 			IN struct osm_remote_guids_count *r,
@@ -231,7 +245,8 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 				  IN boolean_t routing_for_lmc,
 				  IN boolean_t dor,
 				  IN boolean_t port_shifting,
-				  IN uint32_t scatter_ports)
+				  IN uint32_t scatter_ports,
+				  IN boolean_t remote_guid_sorting)
 {
 	/*
 	   We support an enhanced LMC aware routing mode:
@@ -435,6 +450,7 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 					least_forwarded_to = 0;
 				}
 				found_sys_guid = 0;
+				found_node_guid = 0;
 			} else {	/* same sys found - try node */
 
 
@@ -470,6 +486,9 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 			port_paths[port_paths_count].forwarded_to = p_remote_guid->forwarded_to;
 		else
 			port_paths[port_paths_count].forwarded_to = 0;
+		p_rem_physp = osm_physp_get_remote(p_physp);
+		p_rem_node = osm_physp_get_node_ptr(p_rem_physp);
+		port_paths[port_paths_count].remote_node_guid = p_rem_node->node_info.node_guid;
 		port_paths_total_paths += check_count;
 		port_paths_count++;
 
@@ -501,6 +520,11 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 
 	if (port_found == FALSE)
 		return OSM_NO_PATH;
+
+	if (remote_guid_sorting && port_paths_count) {
+		qsort(port_paths, port_paths_count, sizeof(struct switch_port_path),
+		      port_path_guid_cmp);
+	}
 
 	if (port_shifting && port_paths_count) {
 		/* In the port_paths[] array, we now have all the ports that we

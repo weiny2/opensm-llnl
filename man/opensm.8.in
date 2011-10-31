@@ -221,6 +221,12 @@ attempt to alleviate this problem.
 \fB\-\-scatter\-ports\fR
 This option will randomize port selecting in routing.
 .TP
+\fB\-\-remote\-guid\-sorting\fR
+This option enables a feature called \fBremote guid sorting\fR.  In some
+fabrics, switches may be cabled in an inconsistent fashion.  This option
+may alleviate those issues by sorting remote guids before routing,
+making remote destinations appear to be ordered consistently.
+.TP
 \fB\-H\fR, \fB\-\-max_reverse_hops\fR <file name>
 Set the maximum number of reverse hops an I/O node is allowed
 to make. A reverse hop is the use of a switch the wrong way around.
