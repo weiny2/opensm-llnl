@@ -1413,6 +1413,10 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 					      PERFMGR_STATE_DISABLE);
 		} else if (strcmp(p_cmd, "clear_counters") == 0) {
 			osm_perfmgr_clear_counters(&p_osm->perfmgr);
+		} else if (strcmp(p_cmd, "set_rm_nodes") == 0) {
+			osm_perfmgr_set_rm_nodes(&p_osm->perfmgr, 1);
+		} else if (strcmp(p_cmd, "clear_rm_nodes") == 0) {
+			osm_perfmgr_set_rm_nodes(&p_osm->perfmgr, 0);
 		} else if (strcmp(p_cmd, "dump_counters") == 0) {
 			p_cmd = next_token(p_last);
 			if (p_cmd && (strcmp(p_cmd, "mach") == 0)) {
@@ -1456,15 +1460,18 @@ static void perfmgr_parse(char **p_last, osm_opensm_t * p_osm, FILE * out)
 		}
 	} else {
 		fprintf(out, "Performance Manager status:\n"
-			"state                   : %s\n"
-			"sweep state             : %s\n"
-			"sweep time              : %us\n"
-			"outstanding queries/max : %d/%u\n",
+			"state                        : %s\n"
+			"sweep state                  : %s\n"
+			"sweep time                   : %us\n"
+			"outstanding queries/max      : %d/%u\n"
+			"remove missing nodes from DB : %s\n",
 			osm_perfmgr_get_state_str(&p_osm->perfmgr),
 			osm_perfmgr_get_sweep_state_str(&p_osm->perfmgr),
 			osm_perfmgr_get_sweep_time_s(&p_osm->perfmgr),
 			p_osm->perfmgr.outstanding_queries,
-			p_osm->perfmgr.max_outstanding_queries);
+			p_osm->perfmgr.max_outstanding_queries,
+			osm_perfmgr_get_rm_nodes(&p_osm->perfmgr)
+						 ? "TRUE" : "FALSE");
 	}
 }
 #endif				/* ENABLE_OSM_PERF_MGR */
