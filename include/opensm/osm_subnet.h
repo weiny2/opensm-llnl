@@ -160,6 +160,7 @@ typedef struct osm_subn_opt {
 	uint8_t force_link_speed;
 	uint8_t force_link_speed_ext;
 	uint8_t fdr10;
+	char *force_link_speed_file;
 	boolean_t reassign_lids;
 	boolean_t ignore_other_sm;
 	boolean_t single_thread;

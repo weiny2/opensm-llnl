@@ -145,6 +145,7 @@ typedef struct osm_sm {
 	cl_disp_reg_handle_t vla_disp_h;
 	cl_disp_reg_handle_t pkey_disp_h;
 	cl_disp_reg_handle_t mlnx_epi_disp_h;
+	cl_map_t force_link_speed_except_guids;
 } osm_sm_t;
 /*
 * FIELDS
