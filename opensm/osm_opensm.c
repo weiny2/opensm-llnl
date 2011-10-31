@@ -48,6 +48,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <errno.h>
 #include <complib/cl_dispatcher.h>
 #include <complib/cl_passivelock.h>
 #include <opensm/osm_file_ids.h>
@@ -358,6 +359,48 @@ static void load_plugins(osm_opensm_t *osm, const char *plugin_names)
 	free(p_names);
 }
 
+static void build_force_link_speed_except_list(IN osm_opensm_t * const p_osm,
+					       IN const osm_subn_opt_t * const p_opt)
+{
+	FILE *fp;
+	char line[1024];
+	uint64_t guid = 0;
+
+	cl_map_init(&p_osm->sm.force_link_speed_except_guids, 1);
+
+	if (p_opt->force_link_speed_file) {
+		fp = fopen(p_opt->force_link_speed_file, "r");
+		if (!fp) {
+			osm_log(&p_osm->log, OSM_LOG_ERROR,
+				"failed to open force_link_speed_file "
+				"\'%s\'\n",
+				p_opt->force_link_speed_file);
+			return;
+		}
+
+		while (fgets(line, sizeof(line) - 1, fp) != NULL) {
+			char *q, *p = line;
+			q = strchr(p, '#');
+			if (q)
+				*q = '\0';
+			while (*p == ' ' || *p == '\t' || *p == '\n')
+				p++;
+			if (*p == '\0')
+				continue;
+
+			if ((guid = strtoull(p, NULL, 0)) != 0) {
+				OSM_LOG(&p_osm->log, OSM_LOG_DEBUG,
+					"Setting exception on force_link_speed on GUID 0x%016"
+					PRIx64 "\n", guid);
+				cl_map_insert(&p_osm->sm.force_link_speed_except_guids,
+					      guid, (void *)1);
+			}
+		}
+
+		fclose(fp);
+	}
+}
+
 ib_api_status_t osm_opensm_init(IN osm_opensm_t * p_osm,
 				IN const osm_subn_opt_t * p_opt)
 {
@@ -471,6 +514,8 @@ ib_api_status_t osm_opensm_init(IN osm_opensm_t * p_osm,
 	p_osm->routing_engine_used = OSM_ROUTING_ENGINE_TYPE_NONE;
 
 	p_osm->node_name_map = open_node_name_map(p_opt->node_name_map_name);
+
+	build_force_link_speed_except_list(p_osm, p_opt);
 
 Exit:
 	OSM_LOG(&p_osm->log, OSM_LOG_FUNCS, "]\n");	/* Format Waived */
