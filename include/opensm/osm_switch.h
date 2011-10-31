@@ -921,7 +921,8 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 				  IN boolean_t routing_for_lmc,
 				  IN boolean_t dor,
 				  IN boolean_t port_shifting,
-				  IN uint32_t scatter_ports);
+				  IN uint32_t scatter_ports,
+				  IN boolean_t remote_guid_sorting);
 /*
 * PARAMETERS
 *	p_sw
@@ -962,6 +963,9 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 *
 * 	scatter_ports
 * 		[in] If not zero, randomize the selection of the best ports.
+*
+*	remote_guid_sorting
+*		[in] If TRUE, remote_guid_sorting will be done.
 *
 * RETURN VALUE
 *	Returns the recommended port on which to route this LID.
