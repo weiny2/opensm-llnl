@@ -259,7 +259,8 @@ static void ucast_mgr_process_port(IN osm_ucast_mgr_t * p_mgr,
 					 p_mgr->p_subn->opt.lmc,
 					 p_mgr->is_dor,
 					 p_mgr->p_subn->opt.port_shifting,
-					 p_mgr->p_subn->opt.scatter_ports);
+					 p_mgr->p_subn->opt.scatter_ports,
+					 p_mgr->p_subn->opt.remote_guid_sorting);
 
 	if (port == OSM_NO_PATH) {
 		/* do not try to overwrite the ppro of non existing port ... */
