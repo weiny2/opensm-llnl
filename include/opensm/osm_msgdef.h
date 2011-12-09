@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2006 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -161,6 +162,9 @@ enum {
 #endif
 	OSM_MSG_MAD_PORT_COUNTERS,
 	OSM_MSG_MAD_MLNX_EXT_PORT_INFO,
+	OSM_MSG_MAD_VENDOR_QLOGIC_SWITCH_INFO,
+	OSM_MSG_MAD_VENDOR_QLOGIC_PORT_GROUP,
+	OSM_MSG_MAD_VENDOR_QLOGIC_AR_LIDMASK,
 	OSM_MSG_MAX
 };
 

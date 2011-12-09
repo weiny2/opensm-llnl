@@ -56,7 +56,9 @@ opensm_SOURCES = main.c osm_console_io.c osm_console.c osm_db_files.c \
 		 osm_torus.c osm_ucast_dnup.c osm_vl15intf.c \
 		 osm_vl_arb_rcv.c st.c osm_perfmgr.c osm_perfmgr_db.c \
 		 osm_event_plugin.c osm_dump.c osm_ucast_cache.c \
-		 osm_qos_parser_y.y osm_qos_parser_l.l osm_qos_policy.c
+		 osm_qos_parser_y.y osm_qos_parser_l.l osm_qos_policy.c \
+		 osm_qlogic_ar.c osm_qlogic_vlidm_rcv.c osm_qlogic_vpg_rcv.c \
+		 osm_qlogic_vsw_info_rcv.c
 
 AM_YFLAGS:= -d
 
@@ -114,7 +116,11 @@ opensminclude_HEADERS = \
 	$(srcdir)/../include/opensm/osm_ucast_cache.h \
 	$(srcdir)/../include/opensm/osm_vl15intf.h \
 	$(top_builddir)/include/opensm/osm_version.h \
-	$(top_builddir)/include/opensm/osm_config.h
+	$(top_builddir)/include/opensm/osm_config.h \
+	$(top_builddir)/include/opensm/osm_qlogic_ar.h \
+	$(top_builddir)/include/opensm/osm_qlogic_ar_config.h \
+	$(top_builddir)/include/opensm/osm_qlogic_vendor_attr.h
+
 
 BUILT_SOURCES = osm_version osm_qos_parser_y.h
 osm_version:
