@@ -1983,6 +1983,24 @@ void osm_dump_dr_smp(IN osm_log_t * p_log, IN const ib_smp_t * p_smp,
 	}
 }
 
+void osm_mad_packet_hexdump(IN osm_log_t *p_log, IN osm_log_level_t log_level,
+			uint32_t *mad, size_t n)
+{
+	char buf[BUF_SIZE];
+	int j = 0;
+	int i = 0;
+	int rc = 0;
+
+	rc += sprintf(buf, "    -- MAD header --\n");
+	for (j = 0, i = 0; i < (n/4); i++, j+=4) {
+		if (j == 24)
+			rc += sprintf(buf+rc, "    -- MAD data --\n");
+		rc += sprintf(buf+rc, "%4d: %08x\n", j, cl_hton32(mad[i]));
+	}
+	rc += sprintf(buf+rc, "\n");
+	osm_log(p_log, log_level, "%s\n", buf);
+}
+
 void osm_dump_sa_mad(IN osm_log_t * p_log, IN const ib_sa_mad_t * p_mad,
 		     IN osm_log_level_t log_level)
 {
@@ -2032,6 +2050,9 @@ void osm_dump_sa_mad(IN osm_log_t * p_log, IN const ib_sa_mad_t * p_mad,
 
 		strcat(buf, "\n");
 
+		if (!osm_log_is_active(p_log, OSM_LOG_VERBOSE))
+			osm_mad_packet_hexdump(p_log, OSM_LOG_VERBOSE,
+						(uint32_t *)p_mad, 256);
 		osm_log(p_log, log_level, "%s\n", buf);
 	}
 }

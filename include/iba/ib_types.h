@@ -4401,7 +4401,7 @@ typedef struct _ib_sa_mad {
 	ib_net16_t resv;
 	ib_net64_t trans_id;
 	ib_net16_t attr_id;
-	ib_net16_t resv1;
+	ib_net16_t resv1; // use this for RDMA flag
 	ib_net32_t attr_mod;
 	uint8_t rmpp_version;
 	uint8_t rmpp_type;
