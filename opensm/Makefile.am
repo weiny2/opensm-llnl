@@ -25,7 +25,7 @@ libopensm_la_LDFLAGS = -version-info $(opensm_api_version) \
 libopensm_la_DEPENDENCIES = $(srcdir)/libopensm.map
 
 sbin_PROGRAMS = opensm
-opensm_LDFLAGS = -rdynamic
+opensm_LDFLAGS = -rdynamic -libverbs
 opensm_DEPENDENCIES = libopensm.la
 opensm_SOURCES = main.c osm_console_io.c osm_console.c osm_db_files.c \
 		 osm_db_pack.c osm_drop_mgr.c osm_guid_info_rcv.c \
