@@ -58,7 +58,7 @@ opensm_SOURCES = main.c osm_console_io.c osm_console.c osm_db_files.c \
 		 osm_event_plugin.c osm_dump.c osm_ucast_cache.c \
 		 osm_qos_parser_y.y osm_qos_parser_l.l osm_qos_policy.c \
 		 osm_qlogic_ar.c osm_qlogic_vlidm_rcv.c osm_qlogic_vpg_rcv.c \
-		 osm_qlogic_vsw_info_rcv.c
+		 osm_qlogic_vsw_info_rcv.c osm_congestion_control.c
 
 AM_YFLAGS:= -d
 
@@ -101,6 +101,7 @@ opensminclude_HEADERS = \
 	$(srcdir)/../include/opensm/osm_port_profile.h \
 	$(srcdir)/../include/opensm/osm_prefix_route.h \
 	$(srcdir)/../include/opensm/osm_qos_policy.h \
+	$(srcdir)/../include/opensm/osm_congestion_control.h \
 	$(srcdir)/../include/opensm/osm_remote_sm.h \
 	$(srcdir)/../include/opensm/osm_router.h \
 	$(srcdir)/../include/opensm/osm_sa.h \
