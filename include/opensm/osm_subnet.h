@@ -160,6 +160,8 @@ typedef struct osm_qos_options {
 typedef struct osm_subn_opt {
 	char *config_file;
 	ib_net64_t guid;
+	char *ca_name; /* alternative to guid */
+	int ca_port; /* alternative to guid */
 	ib_net64_t m_key;
 	ib_net64_t sm_key;
 	ib_net64_t sa_key;
@@ -273,6 +275,11 @@ typedef struct osm_subn_opt {
 *
 *	guid
 *		The port guid that the SM is binding to.
+*
+*       ca_name
+*       ca_port
+*		Alternative to specifying guid one can specify a CA/Port
+*		Both must be specified to be used
 *
 *	m_key
 *		M_Key value sent to all ports qualifying all Set(PortInfo).

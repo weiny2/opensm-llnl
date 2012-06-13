@@ -415,7 +415,8 @@ static void show_usage(void)
 	exit(2);
 }
 
-static ib_net64_t get_port_guid(IN osm_opensm_t * p_osm, uint64_t port_guid)
+static ib_net64_t get_port_guid(IN osm_opensm_t * p_osm, uint64_t port_guid,
+				IN char *ca_name, IN int ca_port)
 {
 	ib_port_attr_t attr_array[MAX_LOCAL_IBPORTS];
 	uint32_t num_ports = MAX_LOCAL_IBPORTS;
@@ -448,8 +449,22 @@ static ib_net64_t get_port_guid(IN osm_opensm_t * p_osm, uint64_t port_guid)
 		       cl_hton64(attr_array[0].port_guid));
 		return attr_array[0].port_guid;
 	}
-	/* If port_guid is 0 - use the first connected port */
 	if (port_guid == 0) {
+		/* If port_guid is 0 - check for CA/Port specified */
+		if (ca_name && ca_port) {
+			/* search for specific CA/port */
+			for (i = 0; i < num_ports; i++) {
+				if (strcmp(attr_array[i].ca_name, ca_name) == 0
+				    && attr_array[i].port_num == ca_port) {
+					printf("Using %s:%d (GUID 0x%" PRIx64 ")\n",
+					       ca_name, ca_port,
+					       cl_hton64(attr_array[i].port_guid));
+					return attr_array[i].port_guid;
+				}
+			}
+			goto NotFound;
+		}
+		/* ... or if not - use the first connected port */
 		for (i = 0; i < num_ports; i++)
 			if (attr_array[i].link_state > IB_LINK_DOWN)
 				break;
@@ -460,6 +475,7 @@ static ib_net64_t get_port_guid(IN osm_opensm_t * p_osm, uint64_t port_guid)
 		return attr_array[i].port_guid;
 	}
 
+NotFound:
 	if (p_osm->subn.opt.daemon)
 		return 0;
 
@@ -1142,7 +1158,8 @@ int main(int argc, char *argv[])
 	   then get a port GUID value with which to bind.
 	 */
 	if (opt.guid == 0 || cl_hton64(opt.guid) == CL_HTON64(INVALID_GUID))
-		opt.guid = get_port_guid(&osm, opt.guid);
+		opt.guid = get_port_guid(&osm, opt.guid,
+					opt.ca_name, opt.ca_port);
 
 	if (opt.guid == 0)
 		goto Exit;
