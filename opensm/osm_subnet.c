@@ -695,6 +695,8 @@ static void opts_parse_ccti_min(IN osm_subn_t *p_subn, IN char *p_key,
 
 static const opt_rec_t opt_tbl[] = {
 	{ "guid", OPT_OFFSET(guid), opts_parse_net64, NULL, 0 },
+	{ "ca_name", OPT_OFFSET(ca_name), opts_parse_charp, NULL, 0 },
+	{ "ca_port", OPT_OFFSET(ca_port), opts_parse_uint8, NULL, 0 },
 	{ "m_key", OPT_OFFSET(m_key), opts_parse_net64, NULL, 1 },
 	{ "sm_key", OPT_OFFSET(sm_key), opts_parse_net64, NULL, 1 },
 	{ "sa_key", OPT_OFFSET(sa_key), opts_parse_net64, NULL, 1 },
@@ -1419,6 +1421,8 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 {
 	memset(p_opt, 0, sizeof(osm_subn_opt_t));
 	p_opt->guid = 0;
+	p_opt->ca_name = NULL;
+	p_opt->ca_port = 0;
 	p_opt->m_key = OSM_DEFAULT_M_KEY;
 	p_opt->sm_key = OSM_DEFAULT_SM_KEY;
 	p_opt->sa_key = OSM_DEFAULT_SA_KEY;
@@ -2214,6 +2218,10 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"#\n# DEVICE ATTRIBUTES OPTIONS\n#\n"
 		"# The port GUID on which the OpenSM is running\n"
 		"guid 0x%016" PRIx64 "\n\n"
+		"# Alternative to specifying guid one can specify a CA/Port\n"
+		"# Both must be specified to be used\n"
+		"ca_name %s\n"
+		"ca_port %u\n\n"
 		"# M_Key value sent to all ports qualifying all Set(PortInfo)\n"
 		"m_key 0x%016" PRIx64 "\n\n"
 		"# The lease period used for the M_Key on this subnet in [sec]\n"
@@ -2303,6 +2311,8 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# Use SwitchInfo:MulticastFDBTop if advertised in PortInfo:CapabilityMask\n"
 		"use_mfttop %s\n\n",
 		cl_ntoh64(p_opts->guid),
+		p_opts->ca_name,
+		p_opts->ca_port,
 		cl_ntoh64(p_opts->m_key),
 		cl_ntoh16(p_opts->m_key_lease_period),
 		p_opts->m_key_protect_bits,
