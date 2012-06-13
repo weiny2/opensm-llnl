@@ -9297,6 +9297,7 @@ typedef struct _ib_port_attr {
 	 */
 	ib_gid_t *p_gid_table;
 	ib_net16_t *p_pkey_table;
+	char ca_name[64];
 } ib_port_attr_t;
 /*
 * SEE ALSO

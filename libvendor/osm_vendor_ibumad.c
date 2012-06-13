@@ -647,6 +647,7 @@ osm_vendor_get_all_port_attr(IN osm_vendor_t * const p_vend,
 							cl_hton16(ca.ports[j]->pkeys[k]);
 				}
 				attr->num_pkeys = ca.ports[j]->pkeys_size;
+				strncpy(attr->ca_name, ca.ca_name, 64);
 				attr++;
 				if (attr - p_attr_array > *p_num_ports) {
 					done = 1;
