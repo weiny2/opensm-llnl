@@ -237,11 +237,15 @@ static ib_api_status_t pr_rcv_get_path_parms(IN osm_sa_t * sa,
 		 */
 		p_physp = osm_switch_get_route_by_lid(p_node->sw, dest_lid);
 		if (p_physp == 0) {
+		#if 0
+		/* This was causing a lot of delay on Hyperion.  someday I
+		 * might debug why... */
 			OSM_LOG(sa->p_log, OSM_LOG_ERROR, "ERR 1F02: "
 				"Cannot find routing to LID %u on switch "
 				"%s (GUID: 0x%016" PRIx64 ")\n", dest_lid_ho,
 				p_node->print_desc,
 				cl_ntoh64(osm_node_get_node_guid(p_node)));
+		#endif
 			status = IB_NOT_FOUND;
 			goto Exit;
 		}
@@ -369,12 +373,14 @@ static ib_api_status_t pr_rcv_get_path_parms(IN osm_sa_t * sa,
 		 */
 		p_physp = osm_switch_get_route_by_lid(p_node->sw, dest_lid);
 		if (p_physp == 0) {
+		#if 0
 			OSM_LOG(sa->p_log, OSM_LOG_ERROR, "ERR 1F07: "
 				"Dead end path on switch "
 				"%s (GUID: 0x%016"PRIx64") to LID %u\n",
 				p_node->print_desc,
 				cl_ntoh64(osm_node_get_node_guid(p_node)),
 				dest_lid_ho);
+		#endif
 			status = IB_ERROR;
 			goto Exit;
 		}
