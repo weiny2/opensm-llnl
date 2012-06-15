@@ -914,6 +914,11 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 	osm_madw_t *resp_madw;
 	ib_sa_mad_t *sa_mad, *resp_sa_mad;
 	unsigned num_rec, i;
+char *tmp = NULL;
+int num_multi = 1;
+if ((tmp = getenv("OSM_SA_REC_MULTIPLIER")) != NULL) {
+	num_multi = atoi(tmp);
+}
 #ifndef VENDOR_RMPP_SUPPORT
 	unsigned trim_num_rec;
 #endif
@@ -962,6 +967,7 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 	 * Get a MAD to reply. Address of Mad is in the received mad_wrapper
 	 */
 
+num_rec *= num_multi;
 	/* if this is an RDMA request the resp mad is a single packet */
 	if (sa_mad->resv1 & SA_RDMA_REQUEST) {
 		/* get ETH info from user */
@@ -1063,12 +1069,17 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 		    IB_RMPP_FLAG_ACTIVE;
 	}
 
-	for (i = 0; i < num_rec; i++) {
+{
+int j = 0;
+	for (i = 0; i < num_rec/num_multi; i++) {
 		item = cl_qlist_remove_head(list);
+for (j = 0; j < num_multi; j++) {
 		memcpy(p, ((struct item_data *)item)->data, attr_size);
 		p += attr_size;
+}
 		free(item);
 	}
+}
 
 	/* send the RDMA buffer */
 	if (sa_mad->resv1 & SA_RDMA_REQUEST) {
