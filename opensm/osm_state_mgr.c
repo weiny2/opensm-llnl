@@ -65,6 +65,7 @@
 #include <vendor/osm_vendor_api.h>
 #include <opensm/osm_inform.h>
 #include <opensm/osm_opensm.h>
+#include <opensm/osm_congestion_control.h>
 #include <opensm/osm_qlogic_vendor_attr.h>
 #include <opensm/osm_qlogic_ar.h>
 
@@ -1180,11 +1181,15 @@ static void do_sweep(osm_sm_t * sm)
 		}
 
 		osm_qos_setup(sm->p_subn->p_osm);
+		osm_congestion_control_setup(sm->p_subn->p_osm);
 
 		/* Reset flag */
 		sm->p_subn->ignore_existing_lfts = FALSE;
 
 		if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+			return;
+
+		if (osm_congestion_control_wait_pending_transactions (sm->p_subn->p_osm))
 			return;
 
 		if (!sm->p_subn->subnet_initialization_error) {
@@ -1392,7 +1397,12 @@ repeat_discovery:
 
 	osm_qos_setup(sm->p_subn->p_osm);
 
+	osm_congestion_control_setup(sm->p_subn->p_osm);
+
 	if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+		return;
+
+	if (osm_congestion_control_wait_pending_transactions (sm->p_subn->p_osm))
 		return;
 
 	/* cleanup switch lft buffers */
