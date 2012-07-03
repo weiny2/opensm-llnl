@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -188,7 +189,10 @@ static void show_usage(void)
 	       "          of SLs required to give a deadlock free routing\n\n");
 	printf("--lash_start_vl <vl number>\n"
 	       "          Sets the starting VL to use for the lash routing algorithm.\n"
-	       "          Defaults to 0.\n");
+	       "          Defaults to 0.\n\n");
+	printf("--adaptive_routing_file <path to file>\n"
+	       "          This option provides a means to specify vendor adaptive\n"
+	       "          routing options.\n\n");
 	printf("--sm_sl <sl number>\n"
 	       "          Sets the SL to use to communicate with the SM/SA. Defaults to 0.\n\n");
 	printf("--connect_roots, -z\n"
@@ -649,6 +653,7 @@ int main(int argc, char *argv[])
 		{"guid_routing_order_file", 1, NULL, 'X'},
 		{"stay_on_fatal", 0, NULL, 'y'},
 		{"honor_guid2lid", 0, NULL, 'x'},
+		{"adaptive_routing_file", 1, NULL, 15},
 #ifdef ENABLE_OSM_CONSOLE_LOOPBACK
 		{"console-port", 1, NULL, 'C'},
 #endif
@@ -1111,6 +1116,11 @@ int main(int argc, char *argv[])
 			SET_STR_OPT(opt.torus_conf_file, optarg);
 			printf("Torus-2QoS config file = %s\n", opt.torus_conf_file);
 			break;
+		case 15:
+			opt.adaptive_routing_file = optarg;
+			printf(" Adaptive Routing File = %s\n",
+			       opt.adaptive_routing_file);
+			break;
 		case 'h':
 		case '?':
 		case ':':
@@ -1140,6 +1150,8 @@ int main(int argc, char *argv[])
 
 	if (vendor_debug)
 		osm_vendor_set_debug(osm.p_vendor, vendor_debug);
+
+	osm_subn_parse_ar_conf_file(&opt);
 
 	block_signals();
 
