@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -63,6 +64,8 @@
 #include <opensm/osm_msgdef.h>
 #include <opensm/osm_opensm.h>
 #include <opensm/osm_ucast_mgr.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
+#include <opensm/osm_qlogic_ar.h>
 
 static void report_duplicated_guid(IN osm_sm_t * sm, osm_physp_t * p_physp,
 				   osm_node_t * p_neighbor_node,
@@ -516,8 +519,13 @@ static void ni_rcv_process_switch(IN osm_sm_t * sm, IN osm_node_t * p_node,
 	context.si_context.light_sweep = FALSE;
 
 	/* Request a SwitchInfo attribute */
-	status = osm_req_get(sm, path, IB_MAD_ATTR_SWITCH_INFO,
+	if (!is_qlogic_switch(p_node)) {
+		status = osm_req_get(sm, path, IB_MAD_ATTR_SWITCH_INFO,
 			     0, CL_DISP_MSGID_NONE, &context);
+	} else {
+		status = osm_req_get(sm, path, IB_MAD_ATTR_VENDOR_QLOGIC_SWITCH_INFO,
+				 0, OSM_MSG_LIGHT_SWEEP_FAIL, &context);
+	}
 	if (status != IB_SUCCESS)
 		/* continue despite error */
 		OSM_LOG(sm->p_log, OSM_LOG_ERROR, "ERR 0D06: "

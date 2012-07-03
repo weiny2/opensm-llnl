@@ -525,6 +525,7 @@ ib_api_status_t osm_opensm_init(IN osm_opensm_t * p_osm,
 	p_osm->node_name_map = open_node_name_map(p_opt->node_name_map_name);
 
 	build_force_link_speed_except_list(p_osm, p_opt);
+	p_osm->ar_routing_used = 0;
 
 Exit:
 	OSM_LOG(&p_osm->log, OSM_LOG_FUNCS, "]\n");	/* Format Waived */
