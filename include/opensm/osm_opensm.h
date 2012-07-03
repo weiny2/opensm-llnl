@@ -220,6 +220,7 @@ typedef struct osm_opensm {
 	osm_stats_t stats;
 	osm_console_t console;
 	nn_map_t *node_name_map;
+	int ar_routing_used;
 } osm_opensm_t;
 /*
 * FIELDS
