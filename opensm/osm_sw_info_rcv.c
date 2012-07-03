@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2005,2008 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -57,6 +58,9 @@
 #include <opensm/osm_subnet.h>
 #include <opensm/osm_helper.h>
 #include <opensm/osm_opensm.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
+
+extern void qlogic_vsi_rcv_process(IN void *context, IN void *data);
 
 #if 0
 /**********************************************************************
@@ -377,6 +381,10 @@ void osm_si_rcv_process(IN void *context, IN void *data)
 	} else if (si_rcv_process_existing(sm, p_node, p_madw))
 		/* we might get back a request for signaling change was detected */
 		sm->p_subn->force_heavy_sweep = TRUE;
+
+	if (p_smp->attr_id == IB_MAD_ATTR_VENDOR_QLOGIC_SWITCH_INFO) {
+		qlogic_vsi_rcv_process(context, data);
+	}
 
 	CL_PLOCK_RELEASE(sm->p_lock);
 Exit:
