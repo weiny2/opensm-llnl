@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2009 Sun Microsystems, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2009 Mellanox Technologies LTD. All rights reserved.
@@ -68,6 +69,8 @@
 #include <opensm/osm_opensm.h>
 #include <opensm/osm_congestion_control.h>
 #include <opensm/osm_db.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
+#include <opensm/osm_qlogic_ar.h>
 
 extern void osm_drop_mgr_process(IN osm_sm_t * sm);
 extern int osm_qos_setup(IN osm_opensm_t * p_osm);
@@ -75,6 +78,7 @@ extern int osm_pkey_mgr_process(IN osm_opensm_t * p_osm);
 extern int osm_mcast_mgr_process(IN osm_sm_t * sm, boolean_t config_all);
 extern int osm_link_mgr_process(IN osm_sm_t * sm, IN uint8_t state);
 extern void osm_guid_mgr_process(IN osm_sm_t * sm);
+extern void qlogic_set_ar_switches_pause(IN const osm_ucast_mgr_t * p_mgr, IN uint8_t set);
 
 static void state_mgr_up_msg(IN const osm_sm_t * sm)
 {
@@ -136,8 +140,13 @@ static void state_mgr_get_sw_info(IN cl_map_item_t * p_object, IN void *context)
 	mad_context.si_context.set_method = FALSE;
 	mad_context.si_context.light_sweep = TRUE;
 
-	status = osm_req_get(sm, p_dr_path, IB_MAD_ATTR_SWITCH_INFO, 0,
+	if (!is_qlogic_switch(p_node)) {
+		status = osm_req_get(sm, p_dr_path, IB_MAD_ATTR_SWITCH_INFO, 0,
 			     OSM_MSG_LIGHT_SWEEP_FAIL, &mad_context);
+	} else {
+		status = osm_req_get(sm, p_dr_path, IB_MAD_ATTR_VENDOR_QLOGIC_SWITCH_INFO, 0,
+			     OSM_MSG_LIGHT_SWEEP_FAIL, &mad_context);
+	}
 	if (status != IB_SUCCESS)
 		OSM_LOG(sm->p_log, OSM_LOG_ERROR, "ERR 3304: "
 			"Request for SwitchInfo failed (%s)\n",
@@ -1147,17 +1156,37 @@ static void do_sweep(osm_sm_t * sm)
 	    && sm->p_subn->force_heavy_sweep == FALSE
 	    && sm->p_subn->force_reroute == TRUE
 	    && sm->p_subn->subnet_initialization_error == FALSE) {
+
+		int rc = 0;
+
 		/* Reset flag */
 		sm->p_subn->force_reroute = FALSE;
 
 		/* Re-program the switches fully */
 		sm->p_subn->ignore_existing_lfts = TRUE;
 
-		if (osm_ucast_mgr_process(&sm->ucast_mgr)) {
+		/* pause AR during routing setup */
+		if (qlogic_adaptive_routing_enabled(sm->p_subn)) {
+			qlogic_set_ar_switches_pause(&sm->ucast_mgr, 1);
+			if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+				return;
+		}
+
+		rc = osm_ucast_mgr_process(&sm->ucast_mgr);
+
+		if (qlogic_adaptive_routing_enabled(sm->p_subn)) {
+			/* clear AR pause */
+			if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+				return;
+			qlogic_set_ar_switches_pause(&sm->ucast_mgr, 0);
+		}
+
+		if (rc) {
 			OSM_LOG_MSG_BOX(sm->p_log, OSM_LOG_VERBOSE,
 					"REROUTE FAILED");
 			return;
 		}
+
 		osm_qos_setup(sm->p_subn->p_osm);
 
 		/* Reset flag */
@@ -1351,9 +1380,29 @@ repeat_discovery:
 	 */
 
 	if (!sm->ucast_mgr.cache_valid ||
-	    osm_ucast_cache_process(&sm->ucast_mgr))
-		if (osm_ucast_mgr_process(&sm->ucast_mgr))
+	    osm_ucast_cache_process(&sm->ucast_mgr)) {
+
+		int rc = 0;
+
+		if (qlogic_adaptive_routing_enabled(sm->p_subn)) {
+			/* pause AR during routing setup */
+			qlogic_set_ar_switches_pause(&sm->ucast_mgr, 1);
+			if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+				return;
+		}
+
+		rc = osm_ucast_mgr_process(&sm->ucast_mgr);
+
+		if (qlogic_adaptive_routing_enabled(sm->p_subn)) {
+			/* clear AR pause */
+			if (wait_for_pending_transactions(&sm->p_subn->p_osm->stats))
+				return;
+			qlogic_set_ar_switches_pause(&sm->ucast_mgr, 0);
+		}
+
+		if (rc)
 			return;
+	}
 
 	osm_qos_setup(sm->p_subn->p_osm);
 
