@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2012 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -351,6 +352,20 @@ typedef struct osm_cc_context {
 	uint8_t mad_method;	/* was this a get or a set */
 	ib_net32_t attr_mod;
 } osm_cc_context_t;
+
+/****s* OpenSM: MAD Wrapper/osm_ar_context_t
+* NAME
+*	osm_ar_context_t
+*
+* DESCRIPTION
+*	Context needed by recipient of adaptive routing attributes.
+*
+* SYNOPSIS
+*/
+typedef struct osm_ar_context {
+	ib_net64_t node_guid;
+	boolean_t set_method;
+} osm_ar_context_t;
 /*********/
 
 #ifndef OSM_VENDOR_INTF_OPENIB
@@ -393,6 +408,7 @@ typedef union _osm_madw_context {
 	osm_vla_context_t vla_context;
 	osm_perfmgr_context_t perfmgr_context;
 	osm_cc_context_t cc_context;
+	osm_ar_context_t ar_context;
 #ifndef OSM_VENDOR_INTF_OPENIB
 	osm_arbitrary_context_t arb_context;
 #endif
@@ -951,6 +967,35 @@ static inline osm_vla_context_t *osm_madw_get_vla_context_ptr(IN const
 							      p_madw)
 {
 	return ((osm_vla_context_t *) & p_madw->context);
+}
+
+/*
+* PARAMETERS
+*	p_madw
+*		[in] Pointer to an osm_madw_t object.
+*
+* RETURN VALUES
+*	Pointer to the start of the context structure.
+*
+* NOTES
+*
+* SEE ALSO
+*********/
+
+/****f* OpenSM: MAD Wrapper/osm_madw_get_ar_context_ptr
+* NAME
+*	osm_madw_get_ar_context_ptr
+*
+* DESCRIPTION
+*	Gets a pointer to the AR context in this MAD.
+*
+* SYNOPSIS
+*/
+static inline osm_ar_context_t *osm_madw_get_ar_context_ptr(IN const
+							      osm_madw_t *
+							      p_madw)
+{
+	return ((osm_ar_context_t *) & p_madw->context);
 }
 
 /*
