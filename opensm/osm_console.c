@@ -58,6 +58,7 @@
 #include <complib/cl_passivelock.h>
 #include <opensm/osm_perfmgr.h>
 #include <opensm/osm_subnet.h>
+#include <opensm/osm_qlogic_ar_config.h>
 
 extern void osm_update_node_desc(IN osm_opensm_t *osm);
 
@@ -440,6 +441,7 @@ static void dump_sms(osm_opensm_t * p_osm, FILE * out)
 
 static void print_status(osm_opensm_t * p_osm, FILE * out)
 {
+	char str[256];
 	cl_list_item_t *item;
 
 	if (out) {
@@ -458,6 +460,14 @@ static void print_status(osm_opensm_t * p_osm, FILE * out)
 			osm_routing_engine_type_str(p_osm->routing_engine_used->type) :
 			osm_routing_engine_type_str(OSM_ROUTING_ENGINE_TYPE_NONE);
 		fprintf(out, "   Routing Engine       : %s\n", re_str);
+		fprintf(out, "   AR Routing           : %s\n",
+			p_osm->ar_routing_used ? "Yes" : "No");
+
+		if (p_osm->ar_routing_used) {
+			fprintf(out, "   %s\n", qlogic_ar_options_str(
+							p_osm->subn.opt.qlogic_adaptive_routing,
+							str, 256));
+		}
 
 		fprintf(out, "   Loaded event plugins :");
 		if (cl_qlist_head(&p_osm->plugin_list) ==

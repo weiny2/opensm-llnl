@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -52,6 +53,9 @@
 #include <opensm/osm_file_ids.h>
 #define FILE_ID OSM_FILE_SWITCH_C
 #include <opensm/osm_switch.h>
+#include <opensm/osm_qlogic_ar.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
+
 
 struct switch_port_path {
 	uint8_t port_num;
@@ -103,6 +107,12 @@ void osm_switch_delete(IN OUT osm_switch_t ** pp_sw)
 				free(p_sw->hops[i]);
 		free(p_sw->hops);
 	}
+
+	if (p_sw->vendor_data) {
+		if (is_qlogic_switch(p_sw->p_node))
+			qlogic_switch_vendor_delete(p_sw);
+	}
+
 	free(*pp_sw);
 	*pp_sw = NULL;
 }
@@ -123,7 +133,8 @@ osm_switch_t *osm_switch_new(IN osm_node_t * p_node,
 	p_si = ib_smp_get_payload_ptr(p_smp);
 	num_ports = osm_node_get_num_physp(p_node);
 
-	CL_ASSERT(p_smp->attr_id == IB_MAD_ATTR_SWITCH_INFO);
+	CL_ASSERT(p_smp->attr_id == IB_MAD_ATTR_SWITCH_INFO ||
+		  p_smp->attr_id == IB_MAD_ATTR_VENDOR_QLOGIC_SWITCH_INFO);
 
 	if (!p_si->lin_cap) /* The switch doesn't support LFT */
 		return NULL;
@@ -362,8 +373,14 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 				   he wants to be overridden by the minimum
 				   hop function.
 				 */
-				if (hops == least_hops)
+				if (hops == least_hops) {
+					/* Need to verify adaptive routing port groups.  */
+					if (p_sw->vendor_data &&
+						is_qlogic_switch(p_sw->p_node)) {
+						qlogic_path_setup(p_sw, p_port, base_lid, least_hops);
+					}
 					return port_num;
+				}
 			}
 		}
 	}
@@ -374,6 +391,11 @@ uint8_t osm_switch_recommend_path(IN const osm_switch_t * p_sw,
 	   There is lots of room for improved sophistication here,
 	   possibly guided by user configuration info.
 	 */
+
+    if (p_sw->vendor_data &&
+		is_qlogic_switch(p_sw->p_node)) {
+		qlogic_path_setup(p_sw, p_port, base_lid, least_hops);
+	}
 
 	/*
 	   OpenSM routing is "local" - not considering a full lid to lid

@@ -5,6 +5,7 @@
  * Copyright (c) 2008 Xsigo Systems Inc.  All rights reserved.
  * Copyright (c) 2009 System Fabric Works, Inc. All rights reserved.
  * Copyright (c) 2009 HNR Consulting. All rights reserved.
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  *
  * This software is available to you under a choice of one of two
  * licenses.  You may choose to be licensed under the terms of the GNU
@@ -280,6 +281,8 @@ typedef struct osm_subn_opt {
 	uint8_t leaf_head_of_queue_lifetime;
 	uint8_t local_phy_errors_threshold;
 	uint8_t overrun_errors_threshold;
+	char *adaptive_routing_file;
+	uint8_t qlogic_adaptive_routing;
 	boolean_t use_mfttop;
 	uint32_t sminfo_polling_timeout;
 	uint32_t polling_retry_number;
@@ -482,6 +485,12 @@ typedef struct osm_subn_opt {
 *
 *	overrun_errors_threshold
 *		Threshold of credits overrun errors for sending Trap 129
+*
+*	adaptive_routing_file
+*		Path to file containing settings associated with Adaptive Routing
+*
+*	qlogic_adaptive_routing
+*		Vendor config data
 *
 *	sminfo_polling_timeout
 *		Specifies the polling timeout (in milliseconds) - the timeout
@@ -1527,6 +1536,28 @@ int osm_subn_parse_conf_file(char *conf_file, osm_subn_opt_t * p_opt);
 * RETURN VALUES
 *	0 on success, positive value if file doesn't exist,
 *	negative value otherwise
+*********/
+
+/****f* OpenSM: Subnet/osm_subn_parse_ar_conf_file
+
+* NAME
+*	osm_subn_parse_ar_conf_file
+*
+* DESCRIPTION
+*	The osm_subn_parse_ar_conf_file function parses the
+*	adaptive routing configuration file
+*
+* SYNOPSIS
+*/
+void osm_subn_parse_ar_conf_file(IN osm_subn_opt_t * p_opt);
+/*
+* PARAMETERS
+*
+*	p_opt
+*		[in] Pointer to the subnet options structure.
+*
+* RETURN VALUES
+*	None.
 *********/
 
 /****f* OpenSM: Subnet/osm_subn_rescan_conf_files

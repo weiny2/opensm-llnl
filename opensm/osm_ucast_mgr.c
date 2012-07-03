@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2009 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -61,6 +62,10 @@
 #include <opensm/osm_helper.h>
 #include <opensm/osm_msgdef.h>
 #include <opensm/osm_opensm.h>
+#include <opensm/osm_qlogic_ar.h>
+
+extern void qlogic_ar_setup_all_switches(IN osm_sm_t * sm);
+extern void qlogic_set_vswitch_info(IN osm_sm_t * sm, IN osm_switch_t * p_sw, IN uint8_t set_pause);
 
 void osm_ucast_mgr_construct(IN osm_ucast_mgr_t * p_mgr)
 {
@@ -682,11 +687,23 @@ static int ucast_mgr_setup_all_switches(osm_subn_t * p_subn)
 	for (p_sw = (osm_switch_t *) cl_qmap_head(&p_subn->sw_guid_tbl);
 	     p_sw != (osm_switch_t *) cl_qmap_end(&p_subn->sw_guid_tbl);
 	     p_sw = (osm_switch_t *) cl_qmap_next(&p_sw->map_item)) {
+
+		if (p_sw->vendor_data &&
+			is_qlogic_switch(p_sw->p_node)) {
+			if (qlogic_switch_path_prepare(p_sw, lids)) {
+				OSM_LOG(&p_subn->p_osm->log, OSM_LOG_ERROR, "ERR AE0A: "
+					"cannot setup switch 0x%016" PRIx64 "\n",
+					cl_ntoh64(osm_node_get_node_guid
+						(p_sw->p_node)));
+				return -1;
+			}
+		}
+
 		if (osm_switch_prepare_path_rebuild(p_sw, lids)) {
 			OSM_LOG(&p_subn->p_osm->log, OSM_LOG_ERROR, "ERR 3A0B: "
 				"cannot setup switch 0x%016" PRIx64 "\n",
 				cl_ntoh64(osm_node_get_node_guid
-					  (p_sw->p_node)));
+					(p_sw->p_node)));
 			return -1;
 		}
 		if (p_sw->search_ordering_ports) {
@@ -942,7 +959,12 @@ static void ucast_mgr_set_fwd_top(IN cl_map_item_t * p_map_item,
 		si.life_state = life_state;
 	}
 
-	if (set_swinfo_require) {
+	if (p_sw->vendor_data &&
+		is_qlogic_switch(p_sw->p_node) &&
+		qlogic_vswinfo_update_required(p_mgr->p_subn, p_sw)) {
+		qlogic_set_vswitch_info(p_mgr->sm, p_sw, 0);
+
+	} else if (set_swinfo_require) {
 		OSM_LOG(p_mgr->p_log, OSM_LOG_DEBUG,
 			"Setting switch FT top to LID %u\n", p_sw->max_lid_ho);
 
@@ -1069,6 +1091,10 @@ static int ucast_mgr_route(struct osm_routing_engine *r, osm_opensm_t * osm)
 
 	osm->routing_engine_used = r;
 
+	if (qlogic_adaptive_routing_enabled(osm->sm.p_subn)) {
+		qlogic_ar_setup_all_switches(&osm->sm);
+	}
+
 	osm_ucast_mgr_set_fwd_tables(&osm->sm.ucast_mgr);
 
 	return 0;
@@ -1113,6 +1139,10 @@ int osm_ucast_mgr_process(IN osm_ucast_mgr_t * p_mgr)
 		r->build_lid_matrices(r->context);
 		failed = r->ucast_build_fwd_tables(r->context);
 		if (!failed) {
+			if (qlogic_adaptive_routing_enabled(p_mgr->p_subn)) {
+				qlogic_ar_setup_all_switches(p_mgr->sm);
+				p_osm->ar_routing_used = 1;
+			}
 			p_osm->routing_engine_used = r;
 			osm_ucast_mgr_set_fwd_tables(p_mgr);
 		}

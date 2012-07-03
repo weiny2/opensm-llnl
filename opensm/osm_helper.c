@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -54,6 +55,7 @@
 #define FILE_ID OSM_FILE_HELPER_C
 #include <opensm/osm_helper.h>
 #include <opensm/osm_log.h>
+#include <opensm/osm_qlogic_vendor_attr.h>
 
 #define LINE_LENGTH 256
 
@@ -504,13 +506,21 @@ const char *ib_get_sm_attr_str(IN ib_net16_t attr)
 {
 	uint16_t host_attr = cl_ntoh16(attr);
 
-	if (attr == IB_MAD_ATTR_MLNX_EXTENDED_PORT_INFO)
+	if (attr == IB_MAD_ATTR_MLNX_EXTENDED_PORT_INFO) {
 		return "MLNXExtendedPortInfo";
+	} else if (attr == IB_MAD_ATTR_VENDOR_QLOGIC_SWITCH_INFO) {
+		return "VendorQLogicSwitchInfo";
+	} else if (attr == IB_MAD_ATTR_VENDOR_QLOGIC_PORT_GROUP) {
+		return "VendorQLogicPortGroup";
+	} else if (attr == IB_MAD_ATTR_VENDOR_QLOGIC_AR_LIDMASK) {
+		return "VendorQLogicLidMask";
+	}
 
-	if (host_attr > OSM_SM_ATTR_STR_UNKNOWN_VAL)
-		host_attr = OSM_SM_ATTR_STR_UNKNOWN_VAL;
 
-	return ib_sm_attr_str[host_attr];
+	if (host_attr < OSM_SM_ATTR_STR_UNKNOWN_VAL)
+		return ib_sm_attr_str[host_attr];
+
+	return ib_sm_attr_str[OSM_SM_ATTR_STR_UNKNOWN_VAL];
 }
 
 const char *ib_get_sa_attr_str(IN ib_net16_t attr)
@@ -2928,6 +2938,9 @@ static const char *disp_msg_str[] = {
 #endif
 	"OSM_MSG_MAD_PORT_COUNTERS",
 	"OSM_MSG_MAD_MLNX_EXT_PORT_INFO",
+	"OSM_MSM_MAD_VENDOR_QLOGIC_SWITCH_INFO",
+	"OSM_MSM_MAD_VENDOR_QLOGIC_PORT_GROUP",
+	"OSM_MSM_MAD_VENDOR_QLOGIC_AR_LIDMASK",
 	"UNKNOWN!!"
 };
 
