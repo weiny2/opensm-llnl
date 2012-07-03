@@ -1,4 +1,5 @@
 /*
+ * Copyright (c) 2010 QLogic, Inc. All rights reserved.
  * Copyright (c) 2004-2009 Voltaire, Inc. All rights reserved.
  * Copyright (c) 2002-2011 Mellanox Technologies LTD. All rights reserved.
  * Copyright (c) 1996-2003 Intel Corporation. All rights reserved.
@@ -79,6 +80,7 @@
 #include <opensm/osm_service.h>
 #include <opensm/osm_db.h>
 #include <opensm/osm_db_pack.h>
+#include <opensm/osm_qlogic_ar_config.h>
 
 static const char null_str[] = "(null)";
 
@@ -730,6 +732,7 @@ static const opt_rec_t opt_tbl[] = {
 	{ "leaf_head_of_queue_lifetime", OPT_OFFSET(leaf_head_of_queue_lifetime), opts_parse_uint8, NULL, 1 },
 	{ "local_phy_errors_threshold", OPT_OFFSET(local_phy_errors_threshold), opts_parse_uint8, NULL, 1 },
 	{ "overrun_errors_threshold", OPT_OFFSET(overrun_errors_threshold), opts_parse_uint8, NULL, 1 },
+	{ "adaptive_routing_file", OPT_OFFSET(adaptive_routing_file), opts_parse_charp, NULL, 0 },
 	{ "use_mfttop", OPT_OFFSET(use_mfttop), opts_parse_boolean, NULL, 1},
 	{ "sminfo_polling_timeout", OPT_OFFSET(sminfo_polling_timeout), opts_parse_uint32, opts_setup_sminfo_polling_timeout, 1 },
 	{ "polling_retry_number", OPT_OFFSET(polling_retry_number), opts_parse_uint32, NULL, 1 },
@@ -1533,6 +1536,8 @@ void osm_subn_set_default_opt(IN osm_subn_opt_t * p_opt)
 	p_opt->consolidate_ipv6_snm_req = FALSE;
 	p_opt->lash_start_vl = 0;
 	p_opt->sm_sl = OSM_DEFAULT_SL;
+	p_opt->adaptive_routing_file = NULL;
+	p_opt->qlogic_adaptive_routing = 0;
 	p_opt->log_prefix = NULL;
 	p_opt->per_module_logging = FALSE;
 	p_opt->per_module_logging_file = strdup(OSM_DEFAULT_PER_MOD_LOGGING_CONF_FILE);
@@ -1598,6 +1603,52 @@ static ib_api_status_t append_prefix_route(IN osm_subn_t * p_subn,
 	route->guid = cl_hton64(guid);
 	cl_qlist_insert_tail(&p_subn->prefix_routes_list, &route->list_item);
 	return IB_SUCCESS;
+}
+
+void osm_subn_parse_ar_conf_file(IN osm_subn_opt_t * p_opt)
+{
+	FILE *fp;
+	char buf[1024];
+	int line = 0;
+	int errors = 0;
+
+	if (!p_opt->adaptive_routing_file) return;
+
+	fp = fopen(p_opt->adaptive_routing_file, "r");
+	if (!fp) {
+		if (errno == ENOENT)
+			return;
+		log_report("fopen(%s) failed: %s", p_opt->adaptive_routing_file, strerror(errno));
+		return;
+	}
+
+	while (fgets(buf, sizeof buf, fp) != NULL) {
+		char *p_option, *p_opt_val, *p_last;
+
+		line++;
+		if (errors > 10)
+			break;
+
+		p_option = strtok_r(buf, " \t\n", &p_last);
+		if (!p_option)
+			continue; /* ignore blank lines */
+
+		if (*p_option == '#')
+			continue; /* ignore comment lines */
+
+		p_opt_val = strtok_r(NULL, " \t\n", &p_last);
+
+		if (strncmp(p_option, "qlogic", 6) == 0) {
+			qlogic_ar_set_config_option(&p_opt->qlogic_adaptive_routing,
+					p_option, p_opt_val);
+		}
+	}
+
+	if (p_opt->qlogic_adaptive_routing) {
+		qlogic_ar_log_options(p_opt->qlogic_adaptive_routing);
+	}
+
+	fclose(fp);
 }
 
 static ib_api_status_t parse_prefix_routes_file(IN osm_subn_t * p_subn)
@@ -2371,6 +2422,11 @@ int osm_subn_output_conf(FILE *out, IN osm_subn_opt_t * p_opts)
 		"# If TRUE count switches as link subscriptions\n"
 		"port_profile_switch_nodes %s\n\n",
 		p_opts->port_profile_switch_nodes ? "TRUE" : "FALSE");
+
+	fprintf(out,
+		"#\n# The file holding Adaptive Routing options\n#\n"
+		"adaptive_routing_file %s\n\n",
+		p_opts->adaptive_routing_file ? p_opts->adaptive_routing_file : null_str);
 
 	fprintf(out,
 		"# Name of file with port guids to be ignored by port profiling\n"
