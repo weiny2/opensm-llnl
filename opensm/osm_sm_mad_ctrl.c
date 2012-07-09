@@ -743,6 +743,15 @@ static void sm_mad_ctrl_send_err_cb(IN void *context, IN osm_madw_t * p_madw)
 			cl_ntoh16(p_smp->attr_id),
 			ib_get_sm_attr_str(p_smp->attr_id));
 		p_ctrl->p_subn->subnet_initialization_error = TRUE;
+	} else if (p_madw->status == IB_TIMEOUT &&
+		   p_smp->method == IB_MAD_METHOD_GET) {
+		/* Timeouts on SubnGet may be an indication of an mkey
+	 	   error at protection levels 2/3 */
+		OSM_LOG(p_ctrl->p_log, OSM_LOG_ERROR, "ERR 3120 "
+			"Timeout while getting attribute 0x%X (%s)\n",
+			cl_ntoh16(p_smp->attr_id),
+			ib_get_sm_attr_str(p_smp->attr_id));
+		p_ctrl->p_subn->subnet_initialization_error = TRUE;
 	}
 
 	osm_dump_dr_smp_v2(p_ctrl->p_log, p_smp, FILE_ID, OSM_LOG_VERBOSE);
