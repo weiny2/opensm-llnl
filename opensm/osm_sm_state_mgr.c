@@ -109,9 +109,11 @@ static void sm_state_mgr_send_master_sm_info_req(osm_sm_t * sm)
 	context.smi_context.port_guid = p_port->guid;
 	context.smi_context.set_method = FALSE;
 
+	CL_PLOCK_ACQUIRE(sm->p_lock);
 	status = osm_req_get(sm, osm_physp_get_dr_path_ptr(p_port->p_physp),
 			     IB_MAD_ATTR_SM_INFO, 0, CL_DISP_MSGID_NONE,
 			     &context);
+	CL_PLOCK_RELEASE(sm->p_lock);
 
 	if (status != IB_SUCCESS)
 		OSM_LOG(sm->p_log, OSM_LOG_ERROR, "ERR 3204: "
