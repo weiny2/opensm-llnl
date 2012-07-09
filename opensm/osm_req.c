@@ -102,7 +102,7 @@ static ib_net64_t req_determine_mkey(IN osm_sm_t * sm,
 	}
 
 	/* At this point, p_physp points at the outgoing physp on the
-	   last hop, or NULL if we don't know it.
+   	   last hop, or NULL if we don't know it.
 	*/
 	if (!p_physp) {
 		OSM_LOG(sm->p_log, OSM_LOG_ERROR,
@@ -115,6 +115,15 @@ static ib_net64_t req_determine_mkey(IN osm_sm_t * sm,
 	if (p_physp->p_remote_physp) {
 		dest_port_guid = p_physp->p_remote_physp->port_guid;
 		goto Remote_Guid;
+	}
+
+	OSM_LOG(sm->p_log, OSM_LOG_DEBUG, "Target port guid unknown, "
+		"using persistent DB\n");
+	if (!osm_db_neighbor_get(sm->p_subn->p_neighbor,
+			 	cl_ntoh64(p_physp->port_guid),
+			 	p_physp->port_num,
+			 	&dest_port_guid, NULL)) {
+		dest_port_guid = cl_hton64(dest_port_guid);
 	}
 
 Remote_Guid:
