@@ -68,14 +68,33 @@ Various branches in this tree are used for CHAOS.</p><h2>Dependencies</h2>
 
     <h2>Download</h2>
 
+<p>
 I have come up with a new way of keeping LLNL's changes up to date with master.
-We are currently tracking master with 2 branches, master-llnl-upstream and
-master-llnl-only.
+We are currently tracking master with 2 branches
+</p>
 
-master-llnl-upstream is based off of the master branch and contains changes
-which we are actively pushing upstream.  master-llnl-only is based off of
+<ul>
+<li>master-llnl-upstream
+<li>master-llnl-only.
+</ul>
+
+<p>
+<h3>NOTE:</h3> These branches are 'rebased' off of master.  As such their
+histories will not be guaranteed for those who may clone them.  They are
+provided as a reference, and to maintain the current patches to the master
+branch LLNL requires.
+</p>
+
+<p>
+<h3>master-llnl-upstream</h3> is based off of the master branch and contains changes
+which we are actively pushing upstream.
+</p>
+
+<p>
+<h3>master-llnl-only</h3> is based off of
 master-llnl-upstream and contains additional patches which we need here at LLNL
 and we may or may not pursue upstream acceptance.
+</p>
 
     <p>You can also clone the project with <a href="http://git-scm.com">Git</a>
       by running:
