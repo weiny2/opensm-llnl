@@ -58,6 +58,9 @@
 #include <opensm/osm_sm.h>
 #include <opensm/osm_multicast.h>
 
+#include <infiniband/verbs.h>
+#include <infiniband/sa.h>
+
 #ifdef __cplusplus
 #  define BEGIN_C_DECLS extern "C" {
 #  define END_C_DECLS   }
@@ -146,6 +149,21 @@ typedef struct osm_sa {
 	cl_disp_reg_handle_t lft_disp_h;
 	cl_disp_reg_handle_t sir_disp_h;
 	cl_disp_reg_handle_t mft_disp_h;
+	boolean_t fabric_change;
+
+	struct {
+		struct ibv_device *dev;
+		int device_port;
+		struct ibv_context *dev_ctx;
+		struct ibv_pd *pd;
+		/* perhaps will want to have a separate CQ for each QP?
+		 * for now just have 1
+		 */
+		struct ibv_cq *cq;
+		struct ibv_comp_channel *comp_ch;
+		struct sa_rdma_qp *qps_head;
+	} rdma_ctx;
+
 } osm_sa_t;
 /*
 * FIELDS
@@ -397,6 +415,29 @@ void osm_sa_send_error(IN osm_sa_t * sa, IN const osm_madw_t * p_madw,
 */
 void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 		    cl_qlist_t *list);
+
+
+/* add functions for RDMA sending of buffers */
+struct rdma_memory *osm_sa_rdma_malloc(struct ibv_pd *pd, size_t size);
+void osm_sa_rdma_free(struct rdma_memory *mem);
+void osm_sa_respond_buf(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
+		    struct rdma_memory *madbuf, unsigned num_rec);
+uint8_t * rdma_mem_get_buf(struct rdma_memory *mem);
+
+/* after and diff can be the same struct */
+static inline void diff_time(struct timeval *before, struct timeval *after,
+			     struct timeval *diff)
+{
+	struct timeval tmp = *after;
+	if (tmp.tv_usec < before->tv_usec) {
+		tmp.tv_sec--;
+		tmp.tv_usec += 1000000;
+	}
+	diff->tv_sec = tmp.tv_sec - before->tv_sec;
+	diff->tv_usec = tmp.tv_usec - before->tv_usec;
+}
+
+
 /*
 * PARAMETERS
 *	sa

@@ -72,6 +72,7 @@
 #include <opensm/osm_router.h>
 #include <opensm/osm_prefix_route.h>
 #include <opensm/osm_ucast_lash.h>
+#include <sys/time.h>
 
 #define MAX_HOPS 64
 
@@ -1697,8 +1698,51 @@ static void pr_process_multicast(osm_sa_t * sa, const ib_sa_mad_t *sa_mad,
 	cl_qlist_insert_tail(list, &pr_item->list_item);
 }
 
+/* store this off for fast processing */
+/* FIXME this is NOT dynamic */
+static struct rdma_memory * world_buf;
+static boolean_t world_calculated = FALSE;
+static unsigned num_rec = 0;
+
+void delete_world(void)
+{
+	world_calculated = FALSE;
+	if (world_buf) {
+		osm_sa_rdma_free(world_buf);
+	}
+}
+
+boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
+{
+	int i=0;
+	uint8_t *p = NULL;
+	num_rec = cl_qlist_count(pr_list);
+	size_t attr_size = sizeof(ib_path_rec_t);
+	uint32_t buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
+
+	world_buf = osm_sa_rdma_malloc(sa->rdma_ctx.pd, buf_size);
+
+	if (!world_buf)
+		return FALSE;
+
+	p = ((ib_sa_mad_t *)rdma_mem_get_buf(world_buf))->data;
+
+	for (i = 0; i < num_rec; i++) {
+		osm_pr_item_t * item = (osm_pr_item_t *)cl_qlist_remove_head(pr_list);
+		memcpy(p, &(item->path_rec), attr_size);
+		p += attr_size;
+		free(item);
+	}
+
+	world_calculated = TRUE;
+	return (TRUE);
+}
+
+
 void osm_pr_rcv_process(IN void *context, IN void *data)
 {
+	boolean_t return_world = FALSE;
+
 	osm_sa_t *sa = context;
 	osm_madw_t *p_madw = data;
 	const ib_sa_mad_t *p_sa_mad = osm_madw_get_sa_mad_ptr(p_madw);
@@ -1715,6 +1759,11 @@ void osm_pr_rcv_process(IN void *context, IN void *data)
 	CL_ASSERT(p_madw);
 
 	CL_ASSERT(p_sa_mad->attr_id == IB_MAD_ATTR_PATH_RECORD);
+
+	if (sa->fabric_change) {
+		delete_world();
+		sa->fabric_change = FALSE;
+	}
 
 	/* we only support SubnAdmGet and SubnAdmGetTable methods */
 	if (p_sa_mad->method != IB_MAD_METHOD_GET &&
@@ -1825,11 +1874,24 @@ void osm_pr_rcv_process(IN void *context, IN void *data)
 					    NULL, p_dest_alias_guid, p_sgid,
 					    p_dgid, &pr_list);
 		else if (!p_src_port && !p_dest_port)
-			/*
-			   Katie, bar the door!
-			 */
-			pr_rcv_process_world(sa, p_sa_mad, requester_port,
-					     p_sgid, p_dgid, &pr_list);
+			if (world_calculated) {
+printf("Skipping World calculation\n");
+				return_world = TRUE;
+			} else {
+				/*
+				   Katie, bar the door!
+				 */
+struct timeval tv_start;
+struct timeval tv_end;
+struct timeval tv_diff;
+gettimeofday(&tv_start, NULL);
+				pr_rcv_process_world(sa, p_sa_mad, requester_port,
+						     p_sgid, p_dgid, &pr_list);
+gettimeofday(&tv_end, NULL);
+diff_time(&tv_start, &tv_end, &tv_diff);
+fprintf(stderr, "Calculate world took : %ld.%06ld sec\n", tv_diff.tv_sec, tv_diff.tv_usec);
+				return_world = copy_pr_list_to_world_buf(sa, &pr_list);
+			}
 		else if (p_src_port && !p_dest_port) {
 			/* Get all alias GUIDs for the src port */
 			p_src_alias_guid = (osm_alias_guid_t *) cl_qmap_head(&sa->p_subn->alias_port_guid_tbl);
@@ -1902,7 +1964,12 @@ Unlock:
 	cl_plock_release(sa->p_lock);
 
 	/* Now, (finally) respond to the PathRecord request */
-	osm_sa_respond(sa, p_madw, sizeof(ib_path_rec_t), &pr_list);
+	if (world_calculated && return_world) {
+printf("Returning world: %u records\n", num_rec);
+		osm_sa_respond_buf(sa, p_madw, sizeof(ib_path_rec_t), world_buf, num_rec);
+	} else {
+		osm_sa_respond(sa, p_madw, sizeof(ib_path_rec_t), &pr_list);
+	}
 
 Exit:
 	OSM_LOG_EXIT(sa->p_log);
