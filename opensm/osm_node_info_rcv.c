@@ -828,6 +828,8 @@ void osm_ni_rcv_process(IN void *context, IN void *data)
 
 	CL_ASSERT(p_smp->attr_id == IB_MAD_ATTR_NODE_INFO);
 
+	sm->p_subn->p_osm->sa.fabric_change = TRUE;
+
 	if (p_ni->node_guid == 0) {
 		OSM_LOG(sm->p_log, OSM_LOG_ERROR, "ERR 0D16: "
 			"Got Zero Node GUID! Found on the directed route:\n");
