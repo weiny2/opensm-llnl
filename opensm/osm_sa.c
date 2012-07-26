@@ -275,7 +275,7 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 		.qp_state		= IBV_QPS_RTR,
 		.path_mtu		= path->mtu,
 		.dest_qp_num		= eth_info->qpn,
-		.rq_psn			= 0,
+		.rq_psn			= 1,
 		.max_dest_rd_atomic	= 1,
 		.min_rnr_timer		= 12,
 		.ah_attr		= {
@@ -289,9 +289,10 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 
 	*sa_qp = NULL;
 
-	OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
-		"qp:            %p\n"
-		"qpn:           %x\n"
+	//OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
+	printf(
+		"qp ptr:        %p\n"
+		"qpn:           %u\n"
 		"path->mtu:     %d\n"
 		"path->dlid:    %d\n"
 		"path->sl:      %d\n"
@@ -325,7 +326,7 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 	attr.timeout	    = 14;
 	attr.retry_cnt	    = 7;
 	attr.rnr_retry	    = 7;
-	attr.sq_psn	    = 0;
+	attr.sq_psn	    = 1;
 	attr.max_rd_atomic  = 1;
 	if (ibv_modify_qp(qp, &attr,
 			  IBV_QP_STATE              |
@@ -376,7 +377,7 @@ ib_api_status_t osm_sa_rdma_create_qp(IN osm_sa_t *p_sa)
 			.qp_state        = IBV_QPS_INIT,
 			.pkey_index      = 0,
 			.port_num        = p_sa->rdma_ctx.device_port,
-			.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ
+			.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ | IBV_ACCESS_LOCAL_WRITE
 		};
 
 		if (ibv_modify_qp(qp, &attr,
@@ -472,7 +473,8 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 		return (IB_INSUFFICIENT_RESOURCES);
 	}
 
-	OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
+	//OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
+	printf(
 			"RDMA: opened RDMA device: %s\n",
 			ibv_get_device_name(dev));
 
@@ -595,6 +597,12 @@ int osm_sa_rdma_post_send(IN osm_sa_t *p_sa, struct sa_rdma_qp *sa_qp,
 		.wr.rdma.rkey        = eth_info->r_key,
 	};
 	struct ibv_send_wr *bad_wr;
+
+printf("addr %"PRIx64"; rkey %x; length %x\n",
+	(uint64_t)eth_info->addr,
+	eth_info->r_key,
+	eth_info->length);
+
 
 	if ((rc = ibv_post_send(qp, &wr, &bad_wr)) != 0) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
@@ -1076,13 +1084,16 @@ static void osm_sa_respond_int(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 		struct ibv_sa_path_rec path = {
 			.dlid = cl_ntoh16(madw->mad_addr.dest_lid),
 			.sl = madw->mad_addr.addr_type.gsi.service_level,
-			.mtu = 4
+			.mtu = IBV_MTU_2048
 		};
 
 		OSM_LOG(sa->p_log, OSM_LOG_DEBUG,
 			"Attaching qp to remote lid %d, sl %d\n",
 			path.dlid, path.sl);
 
+		fprintf(stderr, "RDMA ((%u * %lu) + %lu = %lu bytes)...\n",
+			num_rec, attr_size, IB_SA_MAD_HDR_SIZE,
+			rdma_buf->size);
 		gettimeofday(&tv_start, NULL);
 		/* attach a qp */
 		if (osm_sa_rdma_get_qp(sa, &eth_info, &path, &sa_qp)) {
@@ -1112,10 +1123,9 @@ static void osm_sa_respond_int(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 		gettimeofday(&tv_end, NULL);
 		diff_time(&tv_start, &tv_end, &tv_diff);
 		diff_time(&tv_data_start, &tv_data_end, &tv_data_diff);
-		fprintf(stderr, "RDMA ((%u * %lu) + %lu = %lu bytes)\n"
+		fprintf(stderr, "RDMA time:\n"
 			"\ttotal: %ld.%06ld sec\n"
 			"\tdata : %ld.%06ld sec\n",
-			num_rec, attr_size, IB_SA_MAD_HDR_SIZE, rdma_buf->size,
 			tv_diff.tv_sec, tv_diff.tv_usec,
 			tv_data_diff.tv_sec, tv_data_diff.tv_usec);
 
