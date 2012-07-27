@@ -45,7 +45,7 @@
 *
 * SYNOPSIS
 */
-#define OSM_VERSION "OpenSM @VERSION@"
+#define OSM_VERSION "OpenSM @VERSION@-@RELEASE@"
 /********/
 
 #endif				/* _OSM_VERSION_H_ */
