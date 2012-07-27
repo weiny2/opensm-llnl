@@ -18,13 +18,21 @@ cd `dirname $0`
 packege=`basename \`pwd\``
 conf_file=configure.in
 version=`cat $conf_file | sed -ne '/AC_INIT.*.*/s/^AC_INIT.*, \(.*\),.*$/\1/p'`
+spec_file=opensm.spec
+release=`grep 'define RELEASE' $spec_file | sed -e 's/.*define\sRELEASE\s*\(.*\)\s*/\1/g'`
 
-git diff --quiet $packege-$version..HEAD -- ./ > /dev/null 2>&1
+if [ "$release" == "@RELEASE@" ]; then
+	release="unknown"
+fi
+
+git diff --quiet $packege-$version-$release..HEAD -- ./ > /dev/null 2>&1
 if [ $? -eq 1 ] ; then
 	abbr=`git rev-parse --short --verify HEAD 2>/dev/null`
 	if [ ! -z "$abbr" ] ; then
 		version="${version}_${abbr}"
 	fi
+else
+	version="${version}-${release}"
 fi
 
 git diff-index --quiet HEAD -- ./> /dev/null 2>&1
