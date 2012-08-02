@@ -38,6 +38,7 @@ opensm_SOURCES = main.c osm_console_io.c osm_console.c osm_db_files.c \
 		 osm_port.c osm_port_info_rcv.c osm_mlnx_ext_port_info_rcv.c \
 		 osm_remote_sm.c osm_req.c \
 		 osm_resp.c osm_sa.c osm_sa_class_port_info.c \
+		 osm_rdma.c \
 		 osm_sa_informinfo.c osm_sa_lft_record.c osm_sa_mft_record.c \
 		 osm_sa_link_record.c osm_sa_mad_ctrl.c \
 		 osm_sa_mcmember_record.c osm_sa_node_record.c \
@@ -107,6 +108,7 @@ opensminclude_HEADERS = \
 	$(srcdir)/../include/opensm/osm_remote_sm.h \
 	$(srcdir)/../include/opensm/osm_router.h \
 	$(srcdir)/../include/opensm/osm_sa.h \
+	$(srcdir)/../include/opensm/osm_rdma.h \
 	$(srcdir)/../include/opensm/osm_sa_mad_ctrl.h \
 	$(srcdir)/../include/opensm/osm_service.h \
 	$(srcdir)/../include/opensm/osm_sm.h \

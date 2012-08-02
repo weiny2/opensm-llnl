@@ -69,6 +69,7 @@
 #include <opensm/osm_opensm.h>
 #include <opensm/osm_qos_policy.h>
 #include <opensm/osm_sa.h>
+#include <opensm/osm_rdma.h>
 #include <opensm/osm_router.h>
 #include <opensm/osm_prefix_route.h>
 #include <opensm/osm_ucast_lash.h>
@@ -1711,7 +1712,7 @@ void delete_world(void)
 	cl_plock_acquire(&world_lock);
 	world_calculated = FALSE;
 	if (world_buf) {
-		osm_sa_rdma_free(world_buf);
+		osm_rdma_free(world_buf);
 		world_buf = NULL;
 	}
 	cl_plock_release(&world_lock);
@@ -1727,7 +1728,7 @@ boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
 	cl_plock_acquire(&world_lock);
 	num_rec = cl_qlist_count(pr_list);
 	buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
-	world_buf = osm_sa_rdma_malloc(sa->rdma_ctx.pd, buf_size);
+	world_buf = osm_rdma_malloc(&sa->rdma_ctx, buf_size);
 
 	if (!world_buf) {
 		cl_plock_release(&world_lock);

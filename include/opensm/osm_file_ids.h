@@ -149,6 +149,7 @@ typedef enum _osm_file_ids_enum {
 	OSM_FILE_VL_ARB_RCV_C,
 	OSM_FILE_ST_C,
 	OSM_FILE_UCAST_DFSSSP_C,
+	OSM_FILE_RDMA_C,
 } osm_file_ids_enum;
 /***********/
 
