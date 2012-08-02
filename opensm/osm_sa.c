@@ -289,8 +289,7 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 
 	*sa_qp = NULL;
 
-	//OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
-	printf(
+	OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
 		"qp ptr:        %p\n"
 		"qpn:           %u\n"
 		"path->mtu:     %d\n"
@@ -473,8 +472,7 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 		return (IB_INSUFFICIENT_RESOURCES);
 	}
 
-	//OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
-	printf(
+	OSM_LOG(p_sa->p_log, OSM_LOG_DEBUG,
 			"RDMA: opened RDMA device: %s\n",
 			ibv_get_device_name(dev));
 
@@ -544,7 +542,7 @@ uint8_t * rdma_mem_get_buf(struct rdma_memory *mem)
 }
 
 /* allocate a buffer and register it */
-struct rdma_memory *osm_sa_rdma_malloc(struct ibv_pd *pd, size_t size)
+struct rdma_memory * osm_sa_rdma_malloc(struct ibv_pd *pd, size_t size)
 {
 	struct rdma_memory *rc = malloc(sizeof(*rc));
 	if (!rc)

@@ -1700,30 +1700,39 @@ static void pr_process_multicast(osm_sa_t * sa, const ib_sa_mad_t *sa_mad,
 
 /* store this off for fast processing */
 /* FIXME this is NOT dynamic */
-static struct rdma_memory * world_buf;
+static struct rdma_memory * world_buf = NULL;
 static boolean_t world_calculated = FALSE;
 static unsigned num_rec = 0;
+static cl_plock_t world_lock;
+static boolean_t world_lock_init = FALSE;
 
 void delete_world(void)
 {
+	cl_plock_acquire(&world_lock);
 	world_calculated = FALSE;
 	if (world_buf) {
 		osm_sa_rdma_free(world_buf);
+		world_buf = NULL;
 	}
+	cl_plock_release(&world_lock);
 }
 
 boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
 {
 	int i=0;
 	uint8_t *p = NULL;
-	num_rec = cl_qlist_count(pr_list);
 	size_t attr_size = sizeof(ib_path_rec_t);
-	uint32_t buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
+	uint32_t buf_size = 0;
 
+	cl_plock_acquire(&world_lock);
+	num_rec = cl_qlist_count(pr_list);
+	buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
 	world_buf = osm_sa_rdma_malloc(sa->rdma_ctx.pd, buf_size);
 
-	if (!world_buf)
+	if (!world_buf) {
+		cl_plock_release(&world_lock);
 		return FALSE;
+	}
 
 	p = ((ib_sa_mad_t *)rdma_mem_get_buf(world_buf))->data;
 
@@ -1735,6 +1744,8 @@ boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
 	}
 
 	world_calculated = TRUE;
+	cl_plock_release(&world_lock);
+
 	return (TRUE);
 }
 
@@ -1760,9 +1771,14 @@ void osm_pr_rcv_process(IN void *context, IN void *data)
 
 	CL_ASSERT(p_sa_mad->attr_id == IB_MAD_ATTR_PATH_RECORD);
 
+	if (!world_lock_init) {
+		cl_plock_init(&world_lock);
+		world_lock_init = TRUE;
+	}
+
 	if (sa->fabric_change) {
-		delete_world();
 		sa->fabric_change = FALSE;
+		delete_world();
 	}
 
 	/* we only support SubnAdmGet and SubnAdmGetTable methods */
@@ -1875,7 +1891,6 @@ void osm_pr_rcv_process(IN void *context, IN void *data)
 					    p_dgid, &pr_list);
 		else if (!p_src_port && !p_dest_port)
 			if (world_calculated) {
-printf("Skipping World calculation\n");
 				return_world = TRUE;
 			} else {
 				/*
