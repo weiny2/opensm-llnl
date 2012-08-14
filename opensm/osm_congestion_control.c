@@ -637,22 +637,37 @@ static void cc_mad_send_err_callback(void *bind_context,
 {
 	osm_congestion_control_t *p_cc = bind_context;
 	osm_madw_context_t *p_madw_context = &p_madw->context;
+	osm_opensm_t *p_osm = p_cc->osm;
 	uint64_t node_guid = p_madw_context->cc_context.node_guid;
 	uint8_t port = p_madw_context->cc_context.port;
+	char desc[IB_NODE_DESCRIPTION_SIZE + 1];
+	struct osm_node *p_node;
 
 	OSM_LOG_ENTER(p_cc->log);
 
+	memset (desc, '\0', IB_NODE_DESCRIPTION_SIZE + 1);
+
+	cl_plock_acquire(&p_osm->lock);
+
+	p_node = osm_get_node_by_guid(p_cc->subn, node_guid);
+	if (p_node)
+		memcpy(desc, p_node->node_desc.description, IB_NODE_DESCRIPTION_SIZE);
+
+	cl_plock_release(&p_osm->lock);
+
 	OSM_LOG(p_cc->log, OSM_LOG_ERROR, "ERR C106: MAD Error (%s): "
 		"attr id = %u LID %u GUID 0x%016" PRIx64 " port %u "
-		"TID 0x%" PRIx64 "\n",
+		"TID 0x%" PRIx64 " Node Desc = %s\n",
 		ib_get_err_str(p_madw->status),
 		p_madw->p_mad->attr_id,
 		cl_ntoh16(p_madw->mad_addr.dest_lid),
 		node_guid,
 		port,
-		cl_ntoh64(p_madw->p_mad->trans_id));
+		cl_ntoh64(p_madw->p_mad->trans_id),
+		desc);
 
-	p_cc->subn->subnet_initialization_error = TRUE;
+	if (p_madw->status != IB_TIMEOUT)
+		p_cc->subn->subnet_initialization_error = TRUE;
 
 	osm_mad_pool_put(p_cc->mad_pool, p_madw);
 
