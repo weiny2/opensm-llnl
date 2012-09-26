@@ -91,6 +91,108 @@ typedef struct osm_path_parms {
 	boolean_t reversible;
 } osm_path_parms_t;
 
+/* store this off for fast processing */
+/* FIXME this is NOT dynamic */
+/* BEGIN IKW */
+static boolean_t threaded_pr_query = FALSE;
+static struct rdma_memory * world_buf = NULL;
+static boolean_t world_calculated = FALSE;
+static unsigned num_rec = 0;
+static cl_plock_t world_lock;
+static boolean_t world_lock_init = FALSE;
+
+typedef struct {
+	cl_list_item_t list_item;
+	osm_sa_t * sa;
+	const ib_sa_mad_t *sa_mad;
+	const osm_port_t * p_req_port;
+	const osm_alias_guid_t * p_src_alias_guid;
+	const osm_alias_guid_t * p_dest_alias_guid;
+	const ib_gid_t * p_sgid;
+	const ib_gid_t * p_dgid;
+	cl_qlist_t * p_list;
+} pr_work_item_t;
+
+static struct pr_thread_work_ctx {
+	cl_spinlock_t lock;
+	cl_qlist_t pr_work_items;
+	cl_thread_pool_t pool;
+} pr_thread_work_ctx;
+
+void delete_world(void)
+{
+	cl_plock_acquire(&world_lock);
+	world_calculated = FALSE;
+	if (world_buf) {
+		osm_rdma_free(world_buf);
+		world_buf = NULL;
+	}
+	cl_plock_release(&world_lock);
+}
+
+boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
+{
+	int i=0;
+	uint8_t *p = NULL;
+	size_t attr_size = sizeof(ib_path_rec_t);
+	uint32_t buf_size = 0;
+
+	cl_plock_acquire(&world_lock);
+	num_rec = cl_qlist_count(pr_list);
+	buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
+	world_buf = osm_rdma_malloc(&sa->rdma_ctx, buf_size);
+
+	if (!world_buf) {
+		cl_plock_release(&world_lock);
+		return FALSE;
+	}
+
+	p = ((ib_sa_mad_t *)rdma_mem_get_buf(world_buf))->data;
+
+	for (i = 0; i < num_rec; i++) {
+		osm_pr_item_t * item = (osm_pr_item_t *)cl_qlist_remove_head(pr_list);
+		memcpy(p, &(item->path_rec), attr_size);
+		p += attr_size;
+		free(item);
+	}
+
+	world_calculated = TRUE;
+	cl_plock_release(&world_lock);
+
+	return (TRUE);
+}
+
+static void pr_rcv_get_port_pair_paths(IN osm_sa_t * sa,
+				       IN const ib_sa_mad_t *sa_mad,
+				       IN const osm_port_t * p_req_port,
+				       IN const osm_alias_guid_t * p_src_alias_guid,
+				       IN const osm_alias_guid_t * p_dest_alias_guid,
+				       IN const ib_gid_t * p_sgid,
+				       IN const ib_gid_t * p_dgid,
+				       IN cl_qlist_t * p_list);
+
+void pr_calc_cb(void * c)
+{
+	struct pr_thread_work_ctx *ctx = (struct pr_thread_work_ctx *)c;
+
+	cl_spinlock_acquire(&ctx->lock);
+	pr_work_item_t *wi = (pr_work_item_t *)cl_qlist_remove_head(&ctx->pr_work_items);
+	if (wi == (pr_work_item_t *)cl_qlist_end(&ctx->pr_work_items)) {
+		cl_spinlock_release(&ctx->lock);
+		return; // nothing to be done???
+	}
+	cl_spinlock_release(&ctx->lock);
+
+	// have to lock p_list within this function to allow speedup
+	pr_rcv_get_port_pair_paths(wi->sa, wi->sa_mad, wi->p_req_port,
+				       wi->p_src_alias_guid,
+				       wi->p_dest_alias_guid,
+				       wi->p_sgid, wi->p_dgid, wi->p_list);
+	free(wi);
+}
+/* END IKW */
+
+
 static inline boolean_t sa_path_rec_is_tavor_port(IN const osm_port_t * p_port)
 {
 	osm_node_t const *p_node;
@@ -1165,7 +1267,9 @@ static void pr_rcv_get_port_pair_paths(IN osm_sa_t * sa,
 						     comp_mask, preference);
 
 		if (p_pr_item) {
+			cl_spinlock_acquire(&pr_thread_work_ctx.lock);
 			cl_qlist_insert_tail(p_list, &p_pr_item->list_item);
+			cl_spinlock_release(&pr_thread_work_ctx.lock);
 			++path_num;
 		}
 
@@ -1229,7 +1333,9 @@ static void pr_rcv_get_port_pair_paths(IN osm_sa_t * sa,
 						     preference);
 
 		if (p_pr_item) {
+			cl_spinlock_acquire(&pr_thread_work_ctx.lock);
 			cl_qlist_insert_tail(p_list, &p_pr_item->list_item);
+			cl_spinlock_release(&pr_thread_work_ctx.lock);
 			++path_num;
 		}
 	}
@@ -1430,10 +1536,32 @@ static void pr_rcv_process_world(IN osm_sa_t * sa, IN const ib_sa_mad_t * sa_mad
 	while (p_dest_alias_guid != (osm_alias_guid_t *) cl_qmap_end(p_tbl)) {
 		p_src_alias_guid = (osm_alias_guid_t *) cl_qmap_head(p_tbl);
 		while (p_src_alias_guid != (osm_alias_guid_t *) cl_qmap_end(p_tbl)) {
+			if (threaded_pr_query) {
+				pr_work_item_t *wi = calloc(1, sizeof(*wi));
+				wi->sa = sa;
+				wi->sa_mad = sa_mad;
+				wi->p_req_port = requester_port;
+				wi->p_src_alias_guid = p_src_alias_guid;
+				wi->p_dest_alias_guid = p_dest_alias_guid;
+				wi->p_sgid = p_sgid;
+				wi->p_dgid = p_dgid;
+				wi->p_list = p_list;
+
+				cl_qlist_insert_tail(&pr_thread_work_ctx.pr_work_items,
+						&(wi->list_item));
+				cl_thread_pool_signal(&pr_thread_work_ctx.pool);
+			} else {
+				pr_rcv_get_port_pair_paths(sa, sa_mad, requester_port,
+						   p_src_alias_guid,
+						   p_dest_alias_guid,
+						   p_sgid, p_dgid, p_list);
+			}
+		/*
 			pr_rcv_get_port_pair_paths(sa, sa_mad, requester_port,
 						   p_src_alias_guid,
 						   p_dest_alias_guid,
 						   p_sgid, p_dgid, p_list);
+						   */
 			if (sa_mad->method == IB_MAD_METHOD_GET &&
 			    cl_qlist_count(p_list) > 0)
 				goto Exit;
@@ -1444,6 +1572,13 @@ static void pr_rcv_process_world(IN osm_sa_t * sa, IN const ib_sa_mad_t * sa_mad
 
 		p_dest_alias_guid =
 		    (osm_alias_guid_t *) cl_qmap_next(&p_dest_alias_guid->map_item);
+	}
+
+	if (threaded_pr_query) {
+		while (!cl_thread_pool_idle(&pr_thread_work_ctx.pool))
+			; // wait
+printf("threads done\n");
+fflush(stdout);
 	}
 
 Exit:
@@ -1699,58 +1834,6 @@ static void pr_process_multicast(osm_sa_t * sa, const ib_sa_mad_t *sa_mad,
 	cl_qlist_insert_tail(list, &pr_item->list_item);
 }
 
-/* store this off for fast processing */
-/* FIXME this is NOT dynamic */
-static struct rdma_memory * world_buf = NULL;
-static boolean_t world_calculated = FALSE;
-static unsigned num_rec = 0;
-static cl_plock_t world_lock;
-static boolean_t world_lock_init = FALSE;
-
-void delete_world(void)
-{
-	cl_plock_acquire(&world_lock);
-	world_calculated = FALSE;
-	if (world_buf) {
-		osm_rdma_free(world_buf);
-		world_buf = NULL;
-	}
-	cl_plock_release(&world_lock);
-}
-
-boolean_t copy_pr_list_to_world_buf(osm_sa_t *sa, cl_qlist_t * pr_list)
-{
-	int i=0;
-	uint8_t *p = NULL;
-	size_t attr_size = sizeof(ib_path_rec_t);
-	uint32_t buf_size = 0;
-
-	cl_plock_acquire(&world_lock);
-	num_rec = cl_qlist_count(pr_list);
-	buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
-	world_buf = osm_rdma_malloc(&sa->rdma_ctx, buf_size);
-
-	if (!world_buf) {
-		cl_plock_release(&world_lock);
-		return FALSE;
-	}
-
-	p = ((ib_sa_mad_t *)rdma_mem_get_buf(world_buf))->data;
-
-	for (i = 0; i < num_rec; i++) {
-		osm_pr_item_t * item = (osm_pr_item_t *)cl_qlist_remove_head(pr_list);
-		memcpy(p, &(item->path_rec), attr_size);
-		p += attr_size;
-		free(item);
-	}
-
-	world_calculated = TRUE;
-	cl_plock_release(&world_lock);
-
-	return (TRUE);
-}
-
-
 void osm_pr_rcv_process(IN void *context, IN void *data)
 {
 	boolean_t return_world = FALSE;
@@ -1773,7 +1856,22 @@ void osm_pr_rcv_process(IN void *context, IN void *data)
 	CL_ASSERT(p_sa_mad->attr_id == IB_MAD_ATTR_PATH_RECORD);
 
 	if (!world_lock_init) {
+		char *tmp = getenv("OPENSM_THREAD_PR_WORLD");
+
 		cl_plock_init(&world_lock);
+		cl_spinlock_init(&pr_thread_work_ctx.lock);
+
+		if (tmp)
+		{
+			int num = strtoul(tmp, NULL, 0);
+			threaded_pr_query = TRUE;
+			// set up a thread pool to calculate the world
+			cl_thread_pool_init(&pr_thread_work_ctx.pool, num,
+					pr_calc_cb,
+					&pr_thread_work_ctx,
+					"PR generator");
+			cl_qlist_init(&pr_thread_work_ctx.pr_work_items);
+		}
 		world_lock_init = TRUE;
 	}
 
