@@ -193,20 +193,7 @@ struct sa_rdma_qp {
 	/* struct ibv_cq *cq; */
 };
 
-static struct {
-	struct ibv_device *dev;
-	int device_port;
-	struct ibv_context *dev_ctx;
-	struct ibv_pd *pd;
-	/* perhaps will want to have a separate CQ for each QP?
-	 * for now just have 1
-	 */
-	struct ibv_cq *cq;
-	struct ibv_comp_channel *comp_ch;
-	struct sa_rdma_qp *qps_head;
-} sa_rdma_ctx;
-
-ib_api_status_t osm_sa_rdma_add_qp(struct ibv_qp *qp)
+ib_api_status_t osm_sa_rdma_add_qp(IN osm_sa_t *sa, struct ibv_qp *qp)
 {
 	struct sa_rdma_qp *tmp = malloc(sizeof(*tmp));
 	if (!tmp) {
@@ -216,8 +203,8 @@ ib_api_status_t osm_sa_rdma_add_qp(struct ibv_qp *qp)
 	tmp->qp = qp;
 	cl_spinlock_construct(&tmp->attached);
 	cl_spinlock_init(&tmp->attached);
-	tmp->next = sa_rdma_ctx.qps_head;
-	sa_rdma_ctx.qps_head = tmp;
+	tmp->next = sa->rdma_ctx.qps_head;
+	sa->rdma_ctx.qps_head = tmp;
 
 	return (IB_SUCCESS);
 }
@@ -251,7 +238,7 @@ ib_api_status_t osm_sa_rdma_detach_qp(IN osm_sa_t *p_sa,
 		struct ibv_qp_attr attr = {
 			.qp_state        = IBV_QPS_INIT,
 			.pkey_index      = 0,
-			.port_num        = sa_rdma_ctx.device_port,
+			.port_num        = p_sa->rdma_ctx.device_port,
 			.qp_access_flags = 0
 		};
 
@@ -275,14 +262,13 @@ fprintf(stderr, "Well that didn't work.  QP RTS -> RESET -> INIT");
 }
 
 ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
-				/* struct sa_rdma_ctx *ctx, FIXME not global */
 				struct sa_eth_info *eth_info,
 				struct ibv_sa_path_rec *path,
 				struct sa_rdma_qp **sa_qp)
 {
 	/* FIXME find eth_info->qpn from list */
-	struct sa_rdma_qp *rc = sa_rdma_ctx.qps_head;
-	struct ibv_qp *qp = sa_rdma_ctx.qps_head->qp;
+	struct sa_rdma_qp *rc = p_sa->rdma_ctx.qps_head;
+	struct ibv_qp *qp = p_sa->rdma_ctx.qps_head->qp;
 
 	/* transition it to RTR/RTS with eth_info and path record */
 	struct ibv_qp_attr attr = {
@@ -297,7 +283,7 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 			.dlid		= path->dlid,
 			.sl		= path->sl,
 			.src_path_bits	= 0,
-			.port_num	= sa_rdma_ctx.device_port
+			.port_num	= p_sa->rdma_ctx.device_port
 		}
 	};
 
@@ -316,7 +302,7 @@ ib_api_status_t osm_sa_rdma_get_qp(IN osm_sa_t *p_sa,
 		path->mtu,
 		path->dlid,
 		path->sl,
-		sa_rdma_ctx.device_port);
+		p_sa->rdma_ctx.device_port);
 
 	cl_spinlock_acquire(&rc->attached);
 
@@ -367,8 +353,8 @@ ib_api_status_t osm_sa_rdma_create_qp(IN osm_sa_t *p_sa)
 	struct ibv_qp *qp;
 
 	struct ibv_qp_init_attr attr = {
-		.send_cq = sa_rdma_ctx.cq,
-		.recv_cq = sa_rdma_ctx.cq,
+		.send_cq = p_sa->rdma_ctx.cq,
+		.recv_cq = p_sa->rdma_ctx.cq,
 		.cap     = {
 			.max_send_wr  = 10,
 			.max_recv_wr  = 500,
@@ -378,7 +364,7 @@ ib_api_status_t osm_sa_rdma_create_qp(IN osm_sa_t *p_sa)
 		.qp_type = IBV_QPT_RC
 	};
 	
-	qp = ibv_create_qp(sa_rdma_ctx.pd, &attr);
+	qp = ibv_create_qp(p_sa->rdma_ctx.pd, &attr);
 	if (!qp) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 			"RDMA: Failed to create QP\n");
@@ -389,7 +375,7 @@ ib_api_status_t osm_sa_rdma_create_qp(IN osm_sa_t *p_sa)
 		struct ibv_qp_attr attr = {
 			.qp_state        = IBV_QPS_INIT,
 			.pkey_index      = 0,
-			.port_num        = sa_rdma_ctx.device_port,
+			.port_num        = p_sa->rdma_ctx.device_port,
 			.qp_access_flags = IBV_ACCESS_REMOTE_WRITE | IBV_ACCESS_REMOTE_READ
 		};
 
@@ -404,7 +390,7 @@ ib_api_status_t osm_sa_rdma_create_qp(IN osm_sa_t *p_sa)
 		}
 	}
 
-	if (osm_sa_rdma_add_qp(qp) != IB_SUCCESS) {
+	if (osm_sa_rdma_add_qp(p_sa, qp) != IB_SUCCESS) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 			"RDMA: Failed to add QP to pool\n");
 		goto DestroyQP;
@@ -464,7 +450,7 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 	int num_dev;
 	uint64_t guid = cl_ntoh64(port_guid);
 
-	memset(&sa_rdma_ctx, 0, sizeof(sa_rdma_ctx));
+	memset(&p_sa->rdma_ctx, 0, sizeof(p_sa->rdma_ctx));
 
 	dev_list = ibv_get_device_list(&num_dev);
 	if (!dev_list) {
@@ -473,11 +459,11 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 		return (IB_INSUFFICIENT_RESOURCES);
 	}
 
-	dev = sa_rdma_ctx.dev = osm_find_RDMA_dev_from_port_guid(
+	dev = p_sa->rdma_ctx.dev = osm_find_RDMA_dev_from_port_guid(
 					guid,
 					dev_list, num_dev,
-					&sa_rdma_ctx.device_port,
-					&sa_rdma_ctx.dev_ctx);
+					&p_sa->rdma_ctx.device_port,
+					&p_sa->rdma_ctx.dev_ctx);
 
 	if (!dev) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
@@ -495,8 +481,8 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 	ibv_free_device_list(dev_list);
 
 #if 0
-	sa_rdma_ctx.comp_ch = ibv_create_comp_channel(sa_rdma_ctx.dev_ctx);
-	if (!sa_rdma_ctx.comp_ch) {
+	p_sa->rdma_ctx.comp_ch = ibv_create_comp_channel(p_sa->rdma_ctx.dev_ctx);
+	if (!p_sa->rdma_ctx.comp_ch) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 			"RDMA: Failed to create completion channel: %s\n",
 			ibv_get_device_name(dev));
@@ -504,21 +490,21 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 	}
 #endif
 	// skip this for now
-	sa_rdma_ctx.comp_ch = NULL;
+	p_sa->rdma_ctx.comp_ch = NULL;
 
-	sa_rdma_ctx.cq = ibv_create_cq(sa_rdma_ctx.dev_ctx, 1000,
-			     (void *)&sa_rdma_ctx,
-			     sa_rdma_ctx.comp_ch,
+	p_sa->rdma_ctx.cq = ibv_create_cq(p_sa->rdma_ctx.dev_ctx, 1000,
+			     (void *)&p_sa->rdma_ctx,
+			     p_sa->rdma_ctx.comp_ch,
 			     0);
-	if (!sa_rdma_ctx.cq) {
+	if (!p_sa->rdma_ctx.cq) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 			"RDMA: Failed to create CQ: %s\n",
 			ibv_get_device_name(dev));
 		goto DestroyCompCh;
 	}
 
-	if (sa_rdma_ctx.comp_ch) {
-		if ((ibv_req_notify_cq(sa_rdma_ctx.cq, 0)) != 0) {
+	if (p_sa->rdma_ctx.comp_ch) {
+		if ((ibv_req_notify_cq(p_sa->rdma_ctx.cq, 0)) != 0) {
 			OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 				"RDMA: Request Notify CQ failed: %s\n",
 				ibv_get_device_name(dev));
@@ -526,8 +512,8 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 		}
 	}
 
-	sa_rdma_ctx.pd = ibv_alloc_pd(sa_rdma_ctx.dev_ctx);
-	if (!sa_rdma_ctx.pd) {
+	p_sa->rdma_ctx.pd = ibv_alloc_pd(p_sa->rdma_ctx.dev_ctx);
+	if (!p_sa->rdma_ctx.pd) {
 		OSM_LOG(p_sa->p_log, OSM_LOG_ERROR,
 			"RDMA: Failed to allocate the PD: %s\n",
 			ibv_get_device_name(dev));
@@ -536,18 +522,23 @@ ib_api_status_t osm_sa_rdma_init(IN osm_sa_t * p_sa, IN ib_net64_t port_guid)
 
 	OSM_LOG(p_sa->p_log, OSM_LOG_INFO, "SA RDMA configured on %s:%d\n",
 			ibv_get_device_name(dev),
-			sa_rdma_ctx.device_port);
+			p_sa->rdma_ctx.device_port);
 	return (osm_sa_rdma_create_qp(p_sa)); // FIXME create more than 1 QP
 
 DestroyCQ:
-	ibv_destroy_cq(sa_rdma_ctx.cq);
+	ibv_destroy_cq(p_sa->rdma_ctx.cq);
 DestroyCompCh:
-	if (sa_rdma_ctx.comp_ch) {
-		ibv_destroy_comp_channel(sa_rdma_ctx.comp_ch);
+	if (p_sa->rdma_ctx.comp_ch) {
+		ibv_destroy_comp_channel(p_sa->rdma_ctx.comp_ch);
 	}
 //CloseDevice:
-	ibv_close_device(sa_rdma_ctx.dev_ctx);
+	ibv_close_device(p_sa->rdma_ctx.dev_ctx);
 	return (IB_INSUFFICIENT_RESOURCES);
+}
+
+uint8_t * rdma_mem_get_buf(struct rdma_memory *mem)
+{
+	return mem->buf;
 }
 
 /* allocate a buffer and register it */
@@ -617,7 +608,7 @@ int osm_sa_rdma_post_send(IN osm_sa_t *p_sa, struct sa_rdma_qp *sa_qp,
 ib_api_status_t osm_sa_rdma_wait_completion(IN osm_sa_t *p_sa,
 			struct ibv_comp_channel *channel)
 {
-	struct ibv_cq *cq = sa_rdma_ctx.cq;
+	struct ibv_cq *cq = p_sa->rdma_ctx.cq;
 	struct ibv_wc wc;
 	int rc = 0;
 
@@ -644,12 +635,12 @@ ib_api_status_t osm_sa_rdma_wait_completion(IN osm_sa_t *p_sa,
 
 ib_api_status_t osm_sa_rdma_close(IN osm_sa_t * p_sa)
 {
-	ibv_dealloc_pd(sa_rdma_ctx.pd);
-	ibv_destroy_cq(sa_rdma_ctx.cq);
-	if (sa_rdma_ctx.comp_ch) {
-		ibv_destroy_comp_channel(sa_rdma_ctx.comp_ch);
+	ibv_dealloc_pd(p_sa->rdma_ctx.pd);
+	ibv_destroy_cq(p_sa->rdma_ctx.cq);
+	if (p_sa->rdma_ctx.comp_ch) {
+		ibv_destroy_comp_channel(p_sa->rdma_ctx.comp_ch);
 	}
-	ibv_close_device(sa_rdma_ctx.dev_ctx);
+	ibv_close_device(p_sa->rdma_ctx.dev_ctx);
 	return (IB_SUCCESS);
 }
 
@@ -676,6 +667,7 @@ ib_api_status_t osm_sa_init(IN osm_sm_t * p_sm, IN osm_sa_t * p_sa,
 	p_sa->p_lock = p_lock;
 
 	p_sa->state = OSM_SA_STATE_READY;
+	p_sa->fabric_change = TRUE; // on startup the fabric is changed
 
 	status = osm_sa_mad_ctrl_init(&p_sa->mad_ctrl, p_sa, p_sa->p_mad_pool,
 				      p_sa->p_vendor, p_subn, p_log, p_stats,
@@ -892,21 +884,8 @@ Exit:
 	OSM_LOG_EXIT(sa->p_log);
 }
 
-/* after and diff can be the same struct */
-static inline void diff_time(struct timeval *before, struct timeval *after,
-			     struct timeval *diff)
-{
-	struct timeval tmp = *after;
-	if (tmp.tv_usec < before->tv_usec) {
-		tmp.tv_sec--;
-		tmp.tv_usec += 1000000;
-	}
-	diff->tv_sec = tmp.tv_sec - before->tv_sec;
-	diff->tv_usec = tmp.tv_usec - before->tv_usec;
-}
-
-void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
-		    cl_qlist_t *list)
+static void osm_sa_respond_int(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
+		    cl_qlist_t *list, struct rdma_memory * rdma_buf, int num_rec)
 {
 	struct item_data {
 		cl_list_item_t list;
@@ -915,17 +894,16 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 	cl_list_item_t *item;
 	osm_madw_t *resp_madw;
 	ib_sa_mad_t *sa_mad, *resp_sa_mad;
-	unsigned num_rec, i;
+	unsigned i;
 #ifndef VENDOR_RMPP_SUPPORT
 	unsigned trim_num_rec;
 #endif
 	unsigned char *p;
-	struct rdma_memory *rdma_buf = NULL;
 	struct sa_rdma_qp *sa_qp = NULL;
 	struct sa_eth_info eth_info;
+	boolean_t buf_needs_copy = TRUE;
 
 	sa_mad = osm_madw_get_sa_mad_ptr(madw);
-	num_rec = cl_qlist_count(list);
 
 	OSM_LOG(sa->p_log, OSM_LOG_DEBUG, "REQUEST MAD\n");
 	osm_dump_sa_mad_v2(sa->p_log, sa_mad, FILE_ID, OSM_LOG_FRAMES);
@@ -1043,11 +1021,15 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 	if (sa_mad->resv1 & SA_RDMA_REQUEST) {
 		/* allocate a buffer */
 		uint32_t buf_size = IB_SA_MAD_HDR_SIZE + (num_rec * attr_size);
-		rdma_buf = osm_sa_rdma_malloc(sa_rdma_ctx.pd, buf_size);
-		if (!rdma_buf) {
-			osm_mad_pool_put(sa->p_mad_pool, resp_madw);
-			osm_sa_send_error(sa, madw, IB_SA_MAD_STATUS_NO_RESOURCES);
-			goto Exit;
+		if (rdma_buf) {
+			buf_needs_copy = FALSE;
+		} else {
+			rdma_buf = osm_sa_rdma_malloc(sa->rdma_ctx.pd, buf_size);
+			if (!rdma_buf) {
+				osm_mad_pool_put(sa->p_mad_pool, resp_madw);
+				osm_sa_send_error(sa, madw, IB_SA_MAD_STATUS_NO_RESOURCES);
+				goto Exit;
+			}
 		}
 		p = rdma_buf->buf;
 
@@ -1065,15 +1047,28 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 		    IB_RMPP_FLAG_ACTIVE;
 	}
 
-	for (i = 0; i < num_rec; i++) {
-		item = cl_qlist_remove_head(list);
-		memcpy(p, ((struct item_data *)item)->data, attr_size);
-		p += attr_size;
-		free(item);
+	if (buf_needs_copy) {
+		if (rdma_buf) {
+			// here we have a non-rdma request but a rdma buffer built so
+			// we have to copy the rdma buffer to the mad packet for
+			// sending...  Wouldn't it be nice if the vendor mad layer
+			// could be rebuilt?
+			memcpy(p, rdma_buf->buf, num_rec * attr_size);
+		} else {
+			for (i = 0; i < num_rec; i++) {
+				item = cl_qlist_remove_head(list);
+				memcpy(p, ((struct item_data *)item)->data, attr_size);
+				p += attr_size;
+				free(item);
+			}
+		}
 	}
 
 	/* send the RDMA buffer */
 	if (sa_mad->resv1 & SA_RDMA_REQUEST) {
+		struct timeval tv_data_start;
+		struct timeval tv_data_end;
+		struct timeval tv_data_diff;
 		struct timeval tv_start;
 		struct timeval tv_end;
 		struct timeval tv_diff;
@@ -1095,45 +1090,75 @@ void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
 			osm_sa_send_error(sa, madw, IB_SA_MAD_STATUS_NO_RESOURCES);
 			goto Exit;
 		}
+		gettimeofday(&tv_data_start, NULL);
+		/* send data */
 		if (osm_sa_rdma_post_send(sa, sa_qp, rdma_buf, &eth_info)) {
 			osm_mad_pool_put(sa->p_mad_pool, resp_madw);
 			osm_sa_send_error(sa, madw, IB_SA_MAD_STATUS_NO_RESOURCES);
 			osm_sa_rdma_detach_qp(sa, sa_qp);
 			goto Exit;
 		}
-		if (osm_sa_rdma_wait_completion(sa, sa_rdma_ctx.comp_ch)) {
+		/* wait for verification */
+		if (osm_sa_rdma_wait_completion(sa, sa->rdma_ctx.comp_ch)) {
 			osm_mad_pool_put(sa->p_mad_pool, resp_madw);
 			osm_sa_send_error(sa, madw, IB_SA_MAD_STATUS_NO_RESOURCES);
 			osm_sa_rdma_detach_qp(sa, sa_qp);
 			goto Exit;
 		}
+		gettimeofday(&tv_data_end, NULL);
 		/* detach to allow for others to use */
 		osm_sa_rdma_detach_qp(sa, sa_qp);
 
 		gettimeofday(&tv_end, NULL);
 		diff_time(&tv_start, &tv_end, &tv_diff);
-		fprintf(stderr, "RDMA took: %ld.%06ld sec\n", tv_diff.tv_sec, tv_diff.tv_usec);
+		diff_time(&tv_data_start, &tv_data_end, &tv_data_diff);
+		fprintf(stderr, "RDMA ((%u * %lu) + %lu = %lu bytes)\n"
+			"\ttotal: %ld.%06ld sec\n"
+			"\tdata : %ld.%06ld sec\n",
+			num_rec, attr_size, IB_SA_MAD_HDR_SIZE, rdma_buf->size,
+			tv_diff.tv_sec, tv_diff.tv_usec,
+			tv_data_diff.tv_sec, tv_data_diff.tv_usec);
 
 		resp_sa_mad->status = SA_RDMA_COMPLETE;
+		if (buf_needs_copy) {
+			osm_sa_rdma_free(rdma_buf);
+		}
 	}
 
 	osm_dump_sa_mad_v2(sa->p_log, resp_sa_mad, FILE_ID, OSM_LOG_FRAMES);
 
 	if (sa_mad->resv1 & SA_RDMA_REQUEST) {
 		OSM_LOG(sa->p_log, OSM_LOG_INFO, "QPn = %d\n",
-			sa_rdma_ctx.qps_head->qp->qp_num);
+			sa->rdma_ctx.qps_head->qp->qp_num);
 	}
 	/* in the RDMA case this is just to notify of the write completion */
 	osm_sa_send(sa, resp_madw, FALSE);
 
 Exit:
-	/* need to set the mem free ... */
-	item = cl_qlist_remove_head(list);
-	while (item != cl_qlist_end(list)) {
-		free(item);
+	if (list) {
+		/* need to set the mem free ... */
 		item = cl_qlist_remove_head(list);
+		while (item != cl_qlist_end(list)) {
+			free(item);
+			item = cl_qlist_remove_head(list);
+		}
 	}
 }
+
+/* originial */
+void osm_sa_respond(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
+		    cl_qlist_t *list)
+{
+	osm_sa_respond_int(sa, madw, attr_size, list, NULL, cl_qlist_count(list));
+}
+
+/* new buf version */
+void osm_sa_respond_buf(osm_sa_t *sa, osm_madw_t *madw, size_t attr_size,
+		    struct rdma_memory *buf, unsigned num_rec)
+{
+	osm_sa_respond_int(sa, madw, attr_size, NULL, buf, num_rec);
+}
+
 
 /*
  *  SA DB Dumper
