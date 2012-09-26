@@ -91,6 +91,14 @@ BEGIN_C_DECLS
 *
 * SYNOPSIS
 */
+struct _cl_thread_pool;
+
+struct th_context {
+	struct _cl_thread_pool *pool;
+	int th_num;
+	int active;
+};
+
 typedef struct _cl_thread_pool {
 	void (*pfn_callback) (void *);
 	void *context;
@@ -99,6 +107,7 @@ typedef struct _cl_thread_pool {
 	pthread_cond_t cond;
 	pthread_mutex_t mutex;
 	pthread_t *tid;
+	struct th_context *ctxs;
 } cl_thread_pool_t;
 /*
 * FIELDS
@@ -212,6 +221,8 @@ void cl_thread_pool_destroy(IN cl_thread_pool_t * const p_thread_pool);
 * SEE ALSO
 *	Thread Pool, cl_thread_pool_construct, cl_thread_pool_init
 *********/
+
+cl_status_t cl_thread_pool_idle(IN cl_thread_pool_t * const p_thread_pool);
 
 /****f* Component Library: Thread Pool/cl_thread_pool_signal
 * NAME

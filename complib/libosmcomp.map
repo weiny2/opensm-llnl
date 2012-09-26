@@ -116,6 +116,7 @@ OSMCOMP_2.3 {
 		cl_thread_pool_init;
 		cl_thread_pool_destroy;
 		cl_thread_pool_signal;
+		cl_thread_pool_idle;
 		__cl_timer_prov_create;
 		__cl_timer_prov_destroy;
 		cl_timer_construct;

@@ -55,14 +55,18 @@ static void cleanup_mutex(void *arg)
 
 static void *thread_pool_routine(void *context)
 {
-	cl_thread_pool_t *p_thread_pool = (cl_thread_pool_t *) context;
+	cl_thread_pool_t *p_thread_pool = ((struct th_context *)context)->pool;
+	int th_num = ((struct th_context *)context)->th_num;
 
 	do {
 		pthread_mutex_lock(&p_thread_pool->mutex);
 		pthread_cleanup_push(cleanup_mutex, p_thread_pool);
-		while (!p_thread_pool->events)
+		while (!p_thread_pool->events) {
+			p_thread_pool->ctxs[th_num].active = 0;
 			pthread_cond_wait(&p_thread_pool->cond,
 					  &p_thread_pool->mutex);
+		}
+		p_thread_pool->ctxs[th_num].active = 1;
 		p_thread_pool->events--;
 		pthread_cleanup_pop(1);
 		/* The event has been signalled.  Invoke the callback. */
@@ -70,6 +74,21 @@ static void *thread_pool_routine(void *context)
 	} while (1);
 
 	return NULL;
+}
+
+cl_status_t cl_thread_pool_idle(IN cl_thread_pool_t * const p_thread_pool)
+{
+	int i = 0;
+
+	if (p_thread_pool->events)
+		return (0);
+
+	for (i = 0; i < p_thread_pool->running_count; i++) {
+		if (p_thread_pool->ctxs[i].active) {
+			return (0);
+		}
+	}
+	return (1);
 }
 
 cl_status_t cl_thread_pool_init(IN cl_thread_pool_t * const p_thread_pool,
@@ -101,11 +120,21 @@ cl_status_t cl_thread_pool_init(IN cl_thread_pool_t * const p_thread_pool,
 		return CL_INSUFFICIENT_MEMORY;
 	}
 
+	p_thread_pool->ctxs = calloc(count, sizeof(*p_thread_pool->ctxs));
+	if (!p_thread_pool->ctxs) {
+		cl_thread_pool_destroy(p_thread_pool);
+		return CL_INSUFFICIENT_MEMORY;
+	}
+
 	p_thread_pool->running_count = count;
 
 	for (i = 0; i < count; i++) {
+		p_thread_pool->ctxs[i].pool = p_thread_pool;
+		p_thread_pool->ctxs[i].th_num = i;
+		p_thread_pool->ctxs[i].active = 1;
 		if (pthread_create(&p_thread_pool->tid[i], NULL,
-				   thread_pool_routine, p_thread_pool) != 0) {
+				   thread_pool_routine,
+				   &p_thread_pool->ctxs[i]) != 0) {
 			cl_thread_pool_destroy(p_thread_pool);
 			return CL_INSUFFICIENT_RESOURCES;
 		}
@@ -133,6 +162,11 @@ void cl_thread_pool_destroy(IN cl_thread_pool_t * const p_thread_pool)
 	pthread_mutex_destroy(&p_thread_pool->mutex);
 
 	p_thread_pool->events = 0;
+
+	if (p_thread_pool->tid)
+		free(p_thread_pool->tid);
+	if (p_thread_pool->ctxs)
+		free(p_thread_pool->ctxs);
 }
 
 cl_status_t cl_thread_pool_signal(IN cl_thread_pool_t * const p_thread_pool)
